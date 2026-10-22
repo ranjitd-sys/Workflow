@@ -15,6 +15,7 @@ export type {
   EmittableStatus,
   IntentEventPublisherOptions,
   PublishInput,
+  PublishResolvedInput,
   PublishResult,
 } from './events/publisher';
 export { OpenAiCompatibleProvider } from './providers/openai';

@@ -31,6 +31,9 @@ Rules for fields:
 - For "unknown", intent.primary must be null and alternatives should be empty.
 - For "ambiguous", list the other plausible supplied ids in intent.alternatives.
 - entities: include only entities actually mentioned. Use evidence quotes.
+- parameters: use only values the user actually stated or that are explicit in the history. Use evidence quotes.
+  - For "send_email", use parameter names "recipient", "subject", "body", and "cc" when present.
+  - Never invent an email address, subject, or message body. Put missing ones in unknowns.
 - actionItems: only actions the user actually requests or states. Set owner to "unknown" when unclear.
 - questions: only questions the user actually asks.
 - urgency: "low", "normal", "high", or "unknown" based only on the message text.

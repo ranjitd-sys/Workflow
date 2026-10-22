@@ -18,6 +18,16 @@ export const DEFAULT_INTENTS: IntentDefinition[] = [
     synonyms: ['action request', 'ask', 'task'],
   },
   {
+    id: 'send_email',
+    name: 'Send Email',
+    description: 'The user asks to send an email or message to someone.',
+    examples: [
+      'Send an email to john@acme.com about the meeting.',
+      'Email Sarah that I will be late.',
+    ],
+    synonyms: ['email', 'write to', 'send a message to'],
+  },
+  {
     id: 'question',
     name: 'Question',
     description: 'The user asks for information or clarification without necessarily requesting an action.',

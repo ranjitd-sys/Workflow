@@ -24,6 +24,11 @@ export interface IntentEventPublisherOptions {
 
 export type PublishInput = ChatIntentInput & { sessionId: string };
 
+export interface PublishResolvedInput {
+  sessionId: string;
+  messageId?: string;
+}
+
 export interface PublishResult {
   result: ChatIntentResult;
   event: ChatIntentEvent | null;
@@ -67,6 +72,21 @@ export class IntentEventPublisher {
     }
 
     const result = await this.engine.detect(input);
+    return this.publish(result, { sessionId, messageId: input.messageId });
+  }
+
+  /**
+   * Publish an already-resolved result without calling the model. Used when the
+   * user selects an intent during clarification.
+   */
+  async publish(
+    result: ChatIntentResult,
+    input: PublishResolvedInput,
+  ): Promise<PublishResult> {
+    const sessionId = input.sessionId?.trim();
+    if (!sessionId) {
+      throw new ChatIntentEngineError('sessionId is required to publish an intent event.');
+    }
 
     if (!this.emitFor.has(result.intent.status)) {
       return { result, event: null };

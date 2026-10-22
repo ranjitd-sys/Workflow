@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const INTENT_IDS = [
   'request',
+  'send_email',
   'question',
   'informational',
   'meeting',
@@ -86,6 +87,13 @@ export const questionSchema = z.object({
   evidence: z.string().min(1),
 });
 
+export const parameterSchema = z.object({
+  name: z.string().min(1),
+  value: z.string().min(1),
+  normalized: z.string().min(1).nullish(),
+  evidence: z.string().min(1),
+});
+
 export const intentSchema = z.object({
   primary: z.string().min(1).nullable(),
   status: z.enum(INTENT_STATUSES),
@@ -96,6 +104,7 @@ export const intentSchema = z.object({
 export const chatIntentResultSchema = z.object({
   intent: intentSchema,
   entities: z.array(entitySchema),
+  parameters: z.array(parameterSchema),
   actionItems: z.array(actionItemSchema),
   questions: z.array(questionSchema),
   urgency: z.enum(URGENCY_LEVELS),
@@ -106,6 +115,7 @@ export const chatIntentResultSchema = z.object({
 });
 
 export type IntentEntity = z.infer<typeof entitySchema>;
+export type IntentParameter = z.infer<typeof parameterSchema>;
 export type ActionItem = z.infer<typeof actionItemSchema>;
 export type IntentQuestion = z.infer<typeof questionSchema>;
 export type ChatIntent = z.infer<typeof intentSchema>;

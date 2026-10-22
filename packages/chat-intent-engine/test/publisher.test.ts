@@ -181,4 +181,27 @@ describe('IntentEventPublisher', () => {
       'sink unavailable',
     );
   });
+
+  it('publishes a resolved result without calling the engine', async () => {
+    const engine = {
+      detect: async () => {
+        throw new Error('engine should not be called');
+      },
+    } as unknown as ChatIntentEngine;
+    const sink = new InMemoryEventSink();
+    const publisher = new IntentEventPublisher({
+      engine,
+      sink,
+      idFactory: () => 'event-resolved',
+      clock: () => new Date('2026-07-15T10:00:00Z'),
+    });
+
+    const { event } = await publisher.publish(makeResult(), {
+      sessionId: 'session-1',
+      messageId: 'resolved-1',
+    });
+
+    expect(event?.id).toBe('event-resolved');
+    expect(sink.events).toHaveLength(1);
+  });
 });
