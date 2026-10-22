@@ -1,0 +1,90 @@
+import type { IntentDefinition } from '../types';
+
+/**
+ * Default taxonomy for general-purpose chat intent understanding.
+ *
+ * These are communication intents, not business operations. The list is
+ * intentionally broad and can be replaced or extended by callers.
+ */
+export const DEFAULT_INTENTS: IntentDefinition[] = [
+  {
+    id: 'request',
+    name: 'Request',
+    description: 'The user asks for an action or for something to be provided.',
+    examples: [
+      'Please send me the Q3 report by Friday.',
+      'Could you update the address on my account?',
+    ],
+    synonyms: ['action request', 'ask', 'task'],
+  },
+  {
+    id: 'question',
+    name: 'Question',
+    description: 'The user asks for information or clarification without necessarily requesting an action.',
+    examples: ['What time is the meeting?', 'Do you know when the invoice was sent?'],
+    synonyms: ['inquiry', 'clarification'],
+  },
+  {
+    id: 'informational',
+    name: 'Informational',
+    description: 'The user shares information and does not clearly request an action or answer.',
+    examples: ['FYI, the office is closed on Monday.', 'Sharing the notes from today’s call.'],
+    synonyms: ['fyi', 'update', 'notice'],
+  },
+  {
+    id: 'meeting',
+    name: 'Meeting',
+    description: 'The user proposes, confirms, reschedules, or cancels a meeting or call.',
+    examples: ['Can we move our call to Thursday?', 'Are you free for a quick sync tomorrow?'],
+    synonyms: ['scheduling', 'calendar', 'call'],
+  },
+  {
+    id: 'follow_up',
+    name: 'Follow-up',
+    description: 'The user follows up on a previous message or unresolved matter.',
+    examples: ['Just checking in on my last message.', 'Any update on the request below?'],
+    synonyms: ['reminder', 'chaser', 'checking in'],
+  },
+  {
+    id: 'complaint',
+    name: 'Complaint',
+    description: 'The user reports a problem, dissatisfaction, or a poor experience.',
+    examples: ['The order arrived damaged.', 'I am unhappy with the delay.'],
+    synonyms: ['issue', 'problem', 'dissatisfaction'],
+  },
+  {
+    id: 'approval',
+    name: 'Approval',
+    description: 'The user requests or grants approval.',
+    examples: ['Please approve the attached budget.', 'Approved — go ahead.'],
+    synonyms: ['sign-off', 'authorization'],
+  },
+  {
+    id: 'social',
+    name: 'Social',
+    description: 'Greetings, thanks, introductions, or other relationship-oriented messages.',
+    examples: ['Thanks for your help!', 'Nice to meet you.'],
+    synonyms: ['greeting', 'thanks', 'introduction'],
+  },
+  {
+    id: 'notification',
+    name: 'Notification',
+    description: 'An automated or system-generated notification.',
+    examples: ['Your package has shipped.', 'Password reset requested.'],
+    synonyms: ['system message', 'alert', 'automated'],
+  },
+  {
+    id: 'marketing',
+    name: 'Marketing',
+    description: 'Promotional or newsletter content.',
+    examples: ['Our summer sale starts today.', 'Read this month’s newsletter.'],
+    synonyms: ['promotion', 'newsletter', 'advertisement'],
+  },
+  {
+    id: 'other',
+    name: 'Other',
+    description: 'A meaningful intent that does not fit any other category.',
+    examples: ['A message that is clearly intended but does not match the taxonomy.'],
+    synonyms: ['miscellaneous'],
+  },
+];

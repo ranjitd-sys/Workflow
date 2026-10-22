@@ -2,6 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { sendMessage, type Message } from '../../lib/api';
+import { detectIntent, type DetectedIntent } from '../../lib/intent';
+
+function newId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
 
 const SUGGESTIONS = [
   {
@@ -82,9 +91,13 @@ export default function Chat({ user, onSignOut }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [detectedIntent, setDetectedIntent] = useState<DetectedIntent | null>(null);
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [intentMock, setIntentMock] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionIdRef = useRef<string>('');
   const hasMessages = messages.length > 0;
 
   useEffect(() => {
@@ -95,11 +108,44 @@ export default function Chat({ user, onSignOut }: Props) {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    try {
+      let id = sessionStorage.getItem('chat_session_id');
+      if (!id) {
+        id = newId();
+        sessionStorage.setItem('chat_session_id', id);
+      }
+      sessionIdRef.current = id;
+    } catch {
+      sessionIdRef.current = newId();
+    }
+  }, []);
+
   const send = async (text?: string) => {
     const msg = (text ?? input).trim();
     if (!msg || loading) return;
     const userMsg: Message = { role: 'user', content: msg };
     const next = [...messages, userMsg];
+
+    setDetectedIntent(null);
+    setEventId(null);
+    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    const sessionId = sessionIdRef.current;
+    if (sessionId) {
+      void detectIntent({
+        message: msg,
+        history,
+        sessionId,
+        messageId: newId(),
+        timestamp: new Date().toISOString(),
+      }).then((response) => {
+        if (!response) return;
+        setDetectedIntent(response.result.intent);
+        setEventId(response.event?.id ?? null);
+        setIntentMock(response.mock);
+      });
+    }
+
     setMessages([...next, { role: 'assistant', content: '' }]);
     setInput('');
     setLoading(true);
@@ -151,6 +197,31 @@ export default function Chat({ user, onSignOut }: Props) {
             </text>
           </svg>
           <span className="font-semibold text-neutral-900 text-lg">Chat</span>
+          {detectedIntent && (
+            <span
+              title={
+                eventId
+                  ? `Event fired: ${eventId}`
+                  : 'No event fired for this intent (unknown intent or validation failure)'
+              }
+              className="ml-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs"
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  detectedIntent.status === 'clear'
+                    ? 'bg-neutral-900'
+                    : detectedIntent.status === 'ambiguous'
+                      ? 'bg-neutral-500'
+                      : 'bg-neutral-300'
+                }`}
+              />
+              <span className="font-medium text-neutral-800">
+                {detectedIntent.primary ?? 'unknown'}
+              </span>
+              <span className="text-neutral-400">{detectedIntent.status}</span>
+              {intentMock && <span className="text-neutral-400">· mock</span>}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-neutral-500 hidden sm:inline">{user.email}</span>

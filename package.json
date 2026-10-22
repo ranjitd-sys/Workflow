@@ -2,13 +2,16 @@
   "name": "workflow-execution",
   "private": true,
   "workspaces": [
-    "front-end"
+    "front-end",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=front-end",
     "build": "npm run build --workspace=front-end",
     "preview": "npm run preview --workspace=front-end",
-    "astro": "npm run astro --workspace=front-end"
+    "astro": "npm run astro --workspace=front-end",
+    "test": "npm run test --workspace=@workflow-execution/chat-intent-engine",
+    "typecheck": "npm run typecheck --workspace=@workflow-execution/chat-intent-engine"
   },
   "allowScripts": {
     "esbuild@0.27.7": true,
