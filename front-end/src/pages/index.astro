@@ -1,0 +1,7 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AuthGate from '../components/auth/AuthGate.tsx';
+---
+<Layout title="Chat">
+  <AuthGate client:load />
+</Layout>
