@@ -7,7 +7,7 @@ import {
   type StructuredLlmProvider,
 } from '@workflow-execution/action-engine';
 import { env } from './env';
-import { createMockActionProvider } from './mock-action';
+import { createMockActionProvider } from './actions/mock-action';
 import { APP_ACTIONS } from './actions/definitions';
 
 export const actionEventStore = new InMemoryEventSink();

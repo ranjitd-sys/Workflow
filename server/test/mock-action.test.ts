@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mockActionResult } from '../src/server/mock-action';
+import { mockActionResult } from '../src/actions/mock-action';
 
 describe('mockActionResult', () => {
   it('classifies an immediate email', () => {

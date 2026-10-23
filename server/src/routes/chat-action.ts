@@ -1,11 +1,11 @@
-import type { APIRoute } from 'astro';
 import {
   EmptyMessageError,
   InvalidMessageError,
   LlmProviderError,
 } from '@workflow-execution/action-engine';
-import { createActionPublisher, actionEventStore } from '../../../server/action';
-import { APP_ACTIONS } from '../../../server/actions/definitions';
+import { actionEventStore, createActionPublisher } from '../action';
+import { APP_ACTIONS } from '../actions/definitions';
+import { isRecord, json, readJson } from '../http/json';
 
 const SUPPORTED_ACTIONS = APP_ACTIONS.map((action) => action.id);
 
@@ -15,17 +15,6 @@ interface ActionRequestBody {
   sessionId: string;
   messageId?: string;
   timestamp?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
 
 function isChatRole(value: unknown): value is 'user' | 'assistant' {
@@ -50,26 +39,20 @@ function parseBody(body: unknown): ActionRequestBody | null {
   if (typeof body.message !== 'string' || !body.message.trim()) return null;
   if (typeof body.sessionId !== 'string' || !body.sessionId.trim()) return null;
 
-  const history = parseHistory(body.history);
-
   return {
     message: body.message,
-    history,
+    history: parseHistory(body.history),
     sessionId: body.sessionId,
     messageId: typeof body.messageId === 'string' ? body.messageId : undefined,
     timestamp: typeof body.timestamp === 'string' ? body.timestamp : undefined,
   };
 }
 
-export const POST: APIRoute = async ({ request }) => {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'Request body must be valid JSON.' }, 400);
-  }
+export async function handleChatAction(request: Request): Promise<Response> {
+  const parsed = await readJson(request);
+  if (!parsed.ok) return parsed.response;
 
-  const input = parseBody(body);
+  const input = parseBody(parsed.body);
   if (!input) {
     return json(
       {
@@ -103,4 +86,4 @@ export const POST: APIRoute = async ({ request }) => {
       500,
     );
   }
-};
+}

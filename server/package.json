@@ -1,0 +1,22 @@
+{
+  "name": "@workflow-execution/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@workflow-execution/action-engine": "^0.1.0",
+    "@workflow-execution/workflow": "^0.1.0",
+    "xstate": "^5.33.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -13,12 +13,13 @@
     "@astrojs/node": "^9.5.5",
     "@astrojs/react": "^4.0.0",
     "@astrojs/tailwind": "^6.0.0",
-    "@workflow-execution/action-engine": "^0.1.0",
     "astro": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.0",
-    "remark-gfm": "^4.0.0"
+    "remark-gfm": "^4.0.0",
+    "@workflow-execution/workflow": "^0.1.0",
+    "@xstate/react": "^6.1.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",

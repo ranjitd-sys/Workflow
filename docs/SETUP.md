@@ -1,19 +1,20 @@
 # Setup
 
-This guide covers installation, environment configuration, running the app, and
-testing the intent + email flows.
+This guide covers installation, environment configuration, running the app,
+tests, and manual verification of the implemented `send_email` workflow.
 
-For the design, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+For the design, see [ARCHITECTURE.md](./ARCHITECTURE.md) and
+[SYSTEM_DIAGRAM.md](./SYSTEM_DIAGRAM.md).
 
 ---
 
 ## 1. Prerequisites
 
 - Node.js 22+
-- npm (the repo uses npm workspaces)
-- A Groq API key (free tier works)
-- Optional: a Gmail account with 2-Step Verification and an App Password for
-  real email delivery
+- Bun 1.3+
+- npm; the repository uses npm workspaces
+- A Groq API key for real action identification (free tier works)
+- A Brevo account, API key, and verified sender email for real delivery
 
 ---
 
@@ -25,102 +26,101 @@ cd Workflow_execution
 npm install
 ```
 
+The workspace installs four packages:
+
+- `front-end` — Astro SSR app and chat UI
+- `server` — Bun HTTP API, action wiring, queue, root machine, and Brevo adapter
+- `packages/action-engine` — action identification engine
+- `workflow` — client conversation machine and shared workflow contracts
+
 ---
 
 ## 3. Environment
 
 ```bash
-cp front-end/.env.example front-end/.env
+cp server/.env.example server/.env
 ```
 
-Then edit `front-end/.env`. Do not commit it — it is gitignored.
+Edit `server/.env`. Do not commit it; `.env` is gitignored. All LLM and Brevo
+credentials belong to the server workspace, not the front-end.
 
-### 3.1 Intent engine (required for real classification)
+The Bun server loads `server/.env` when started through `npm run dev:server` or
+`npm run start:server`. The Astro dev server reads `API_PROXY_TARGET` from its
+own process environment if you need a non-default API address.
+
+### 3.1 Bun API
+
+```env
+HOST=127.0.0.1
+PORT=3001
+```
+
+The front-end calls relative `/api` URLs. In development, Astro proxies `/api`
+to `http://127.0.0.1:3001`. Override the proxy target when needed:
+
+```bash
+API_PROXY_TARGET=http://127.0.0.1:4000 npm run dev:front
+```
+
+### 3.2 Action identification
 
 ```env
 GROQ_API_KEY=gsk_your_key_here
 
-INTENT_LLM_API_KEY=
-INTENT_LLM_BASE_URL=https://api.groq.com/openai/v1
-INTENT_LLM_MODEL=openai/gpt-oss-20b
-INTENT_LLM_STRICT_JSON_SCHEMA=true
-INTENT_LLM_MOCK=false
+ACTION_LLM_API_KEY=
+ACTION_LLM_BASE_URL=https://api.groq.com/openai/v1
+ACTION_LLM_MODEL=openai/gpt-oss-20b
+ACTION_LLM_STRICT_JSON_SCHEMA=true
+ACTION_LLM_MOCK=false
 ```
 
-- `INTENT_LLM_API_KEY` is optional; if empty, `GROQ_API_KEY` is used.
+- `ACTION_LLM_API_KEY` is optional; if empty, `GROQ_API_KEY` is used.
 - `openai/gpt-oss-20b` supports strict JSON-schema output on Groq.
-- For models that only support best-effort schemas, set
-  `INTENT_LLM_STRICT_JSON_SCHEMA=false`.
-- With no key at all, the app automatically uses the local mock classifier.
-- Set `INTENT_LLM_MOCK=true` to force the mock even when a key exists.
+- Set `ACTION_LLM_STRICT_JSON_SCHEMA=false` for models that only support
+  best-effort schemas.
+- With no key, the app automatically uses the local mock classifier.
+- Set `ACTION_LLM_MOCK=true` to force the mock even when a key exists.
 
 Get a Groq key: https://console.groq.com/keys
 
-### 3.2 Email sender
-
-The app supports two senders.
-
-#### Mock (no delivery)
+### 3.3 Brevo email delivery
 
 ```env
-EMAIL_PROVIDER=mock
+BREVO_API_KEY=xkeysib-your-key
+BREVO_SENDER_EMAIL=verified-sender@example.com
+BREVO_SENDER_NAME=Your Name
 ```
 
-The worker records emails in memory and the UI shows `Email sent to …`, but no
-message leaves the server.
+- `BREVO_API_KEY` is server-side only.
+- `BREVO_SENDER_EMAIL` must be a verified sender in Brevo.
+- `BREVO_SENDER_NAME` is optional.
+- Email is sent as `textContent`; no HTML template is used.
+- Brevo endpoint: `POST https://api.brevo.com/v3/smtp/email`.
 
-#### Gmail SMTP
+Immediate `send_email` is implemented through the workflow queue and server
+root machine. `schedule_email` has a root-machine state, but its actor is a
+placeholder and always fails. There is no schedule store, worker, or delivery
+yet.
 
-```env
-EMAIL_PROVIDER=smtp
-EMAIL_FROM=your.address@gmail.com
-
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_SECURE=true
-SMTP_USER=your.address@gmail.com
-SMTP_PASS=your_google_app_password
-```
-
-Notes:
-
-- `EMAIL_FROM` should match `SMTP_USER` for Gmail.
-- Port `465` uses `SMTP_SECURE=true`.
-- Port `587` uses `SMTP_SECURE=false` (STARTTLS).
-- `SMTP_PASS` must be a Google **App Password**, not your normal password.
-- `SMTP_URL` can be used instead of host/port/user/pass:
-  `smtps://user:app-password@smtp.gmail.com:465`
-
-#### Creating a Google App Password
-
-1. Open Google Account → Security.
-2. Enable **2-Step Verification**.
-3. Open **App passwords**.
-4. Create one for “Mail”.
-5. Copy the 16-character value into `SMTP_PASS`.
-
-Google Workspace administrators can disable App Passwords.
-
-### 3.3 Environment reference
+### 3.4 Environment reference
 
 | Variable | Purpose | Default |
 |---|---|---|
+| `HOST` | Bun API bind address | `127.0.0.1` |
+| `PORT` | Bun API port | `3001` |
 | `GROQ_API_KEY` | Groq API key | — |
-| `INTENT_LLM_API_KEY` | explicit intent key | falls back to `GROQ_API_KEY` |
-| `INTENT_LLM_BASE_URL` | OpenAI-compatible base URL | `https://api.groq.com/openai/v1` |
-| `INTENT_LLM_MODEL` | intent model | `openai/gpt-oss-20b` |
-| `INTENT_LLM_STRICT_JSON_SCHEMA` | strict schema on/off | `true` |
-| `INTENT_LLM_MOCK` | force mock classifier | `false` |
-| `EMAIL_PROVIDER` | `mock` or `smtp` | `mock` |
-| `EMAIL_FROM` | sender address | falls back to `SMTP_USER` |
-| `SMTP_HOST` | SMTP host | `smtp.gmail.com` |
-| `SMTP_PORT` | SMTP port | `465` |
-| `SMTP_SECURE` | TLS mode | `true` |
-| `SMTP_USER` | SMTP username | — |
-| `SMTP_PASS` | SMTP password / App Password | — |
-| `SMTP_URL` | full SMTP URL (optional) | — |
+| `ACTION_LLM_API_KEY` | explicit action key | falls back to `GROQ_API_KEY` |
+| `ACTION_LLM_BASE_URL` | OpenAI-compatible base URL | `https://api.groq.com/openai/v1` |
+| `ACTION_LLM_MODEL` | action model | `openai/gpt-oss-20b` |
+| `ACTION_LLM_STRICT_JSON_SCHEMA` | strict schema on/off | `true` |
+| `ACTION_LLM_MOCK` | force mock classifier | `false` |
+| `BREVO_API_KEY` | Brevo API key | — |
+| `BREVO_SENDER_EMAIL` | verified Brevo sender | — |
+| `BREVO_SENDER_NAME` | sender display name | — |
+| `API_PROXY_TARGET` | Astro dev proxy target | `http://127.0.0.1:3001` |
 
-**Restart the dev server after changing `.env`.** Vite reads it at startup.
+**Restart the relevant dev process after changing environment values.** Bun reads
+`server/.env` at startup; Astro reads `API_PROXY_TARGET` at startup.
 
 ---
 
@@ -130,170 +130,325 @@ Google Workspace administrators can disable App Passwords.
 npm run dev
 ```
 
-Open http://localhost:4321.
+This starts both processes:
 
-Build and run the server version:
+- Astro front-end: http://localhost:4321
+- Bun API: http://127.0.0.1:3001
+
+Run them separately when needed:
+
+```bash
+npm run dev:front
+npm run dev:server
+```
+
+Build and run the production server version:
 
 ```bash
 npm run build
-node front-end/dist/server/entry.mjs
+npm run start:server
+npm run start:front
 ```
+
+The Astro dev proxy is not part of the production server. In production, use a
+reverse proxy (or equivalent same-origin routing) that serves the Astro app and
+forwards `/api` to the Bun API.
 
 ---
 
-## 5. Tests
+## 5. Tests and checks
 
 ```bash
-npm test          # engine + front-end tests
-npm run typecheck # engine package
-npm run build     # Astro server build
+npm test
+npm run typecheck
+npm run build
+cd front-end && npx astro check
 ```
 
-Expected:
+Current expected totals:
 
-- 69 engine tests
-- 11 front-end tests
-- 80 total
+- 32 action-engine tests
+- 10 workflow tests
+- 17 server tests
+- 6 front-end tests
+- 65 tests total
 
-SMTP tests use an injected transport and do not send real email.
+Brevo and workflow-client tests use a mocked `fetch`; they do not send real
+email. Server tests also mock `fetch` for the root-machine/Brevo path.
 
 ---
 
 ## 6. Manual test scenarios
 
-### 6.1 Intent only
+### 6.1 Identification only
 
 Type:
 
 > Send an email to john@acme.com about the invoice.
 
-Expected: a **Question** intent card with `clear`, an event id, and no email
-side effect.
+Expected:
 
-### 6.2 Ambiguous intent
+- Action: **Send Email**, status `clear`
+- An action card with the `chat.action.identified` event
+- The client XState workflow asks for the missing subject and body
+- No email is sent until confirmation
 
-Type something vague, for example:
-
-> Take care of this.
-
-If the model returns `ambiguous` or `unknown`, the UI asks a clarification
-question with intent options. Selecting one fires the event.
-
-### 6.3 Send email (happy path)
+### 6.2 Full send flow
 
 Type:
 
-> Send an email to your.address@gmail.com saying This is a test from the intent engine.
+> Send an email to recipient@example.com about the invoice.
+
+Then answer the prompts:
+
+- Subject: `Invoice for March`
+- Body: `Please find the invoice attached.`
 
 Expected:
 
-- Intent: **Send Email**, `clear`
-- `Email sent to your.address@gmail.com`
-- Email arrives (check Spam too)
+- Confirmation card shows recipient, subject, and body
+- `Confirm and send` calls `POST /api/workflow/events`
+- The Bun server enqueues a `workflow.action.requested` event
+- The server root machine invokes the `send_email` actor
+- The Brevo adapter returns a `messageId`
+- Chat polls the job status and shows `Email sent` with the message ID
 
-API equivalent:
+### 6.3 Ambiguous input
+
+Type something vague:
+
+> Take care of this.
+
+If the model returns `ambiguous` or `unknown`, the UI shows clarification
+options. Selecting `send_email` starts the same workflow.
+
+### 6.4 Schedule email
+
+Type:
+
+> Schedule an email to john@acme.com for tomorrow at 9.
+
+Expected:
+
+- `schedule_email` is identified
+- The chat UI explains that scheduling is not implemented
+- No send occurs
+
+The workflow API still accepts a complete `schedule_email` event for exercising
+the root machine. The job fails with:
+
+> schedule_email is not implemented yet.
+
+### 6.5 Mock classifier
+
+With no LLM key, or with `ACTION_LLM_MOCK=true`, the mock:
+
+- recognizes email/send wording;
+- extracts a recipient email address;
+- always reports `subject` and `body` as missing;
+- recognizes schedule wording and extracts some time phrases.
+
+This is intentional so the parameter-collection workflow can be tested without
+an LLM.
+
+### 6.6 API: health check
 
 ```bash
-curl -s -X POST http://localhost:4321/api/chat/intent \
+curl -s http://127.0.0.1:3001/health
+```
+
+Expected:
+
+```json
+{"ok":true}
+```
+
+### 6.7 API: identify an action
+
+Directly against the Bun API:
+
+```bash
+curl -s -X POST http://127.0.0.1:3001/api/chat/action \
   -H 'Content-Type: application/json' \
   -d '{
-    "message": "Send an email to your.address@gmail.com saying This is an API test.",
+    "message": "Send an email to john@acme.com about the invoice.",
     "history": [],
-    "sessionId": "smtp-test-1",
-    "messageId": "smtp-msg-1",
-    "timestamp": "2026-07-15T09:00:00Z"
+    "sessionId": "manual-test-1",
+    "messageId": "manual-msg-1",
+    "timestamp": "2026-10-23T09:00:00Z"
   }'
 ```
 
-Inspect the outbox:
+Through the Astro dev proxy, replace the origin with
+`http://localhost:4321`.
+
+### 6.8 API: enqueue a workflow action
+
+This queues a complete, confirmed action. It does not send directly.
 
 ```bash
-curl -s "http://localhost:4321/api/emails?sessionId=smtp-test-1"
+curl -s -X POST http://127.0.0.1:3001/api/workflow/events \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actionId": "send_email",
+    "parameters": {
+      "to": "recipient@example.com",
+      "subject": "API test",
+      "body": "This is a test from the workflow execution app."
+    },
+    "sessionId": "manual-test-1"
+  }'
 ```
 
-### 6.4 Missing or invalid recipient
+Expected response (`202 Accepted`):
 
-Type:
+```json
+{
+  "eventId": "<uuid>",
+  "actionId": "send_email",
+  "status": "queued"
+}
+```
 
-> Send an email to John saying I'll be late.
+With Brevo configured, the actor sends the email. Without credentials, the job
+fails with `BREVO_API_KEY is not configured.`
 
-Expected: `needs_info` — recipient is not a valid email address. No send.
-
-### 6.5 Missing body
-
-Type:
-
-> Send an email to your.address@gmail.com
-
-Expected: `needs_info` — email body is missing. No send.
-
-### 6.6 Debug endpoints
+### 6.9 API: read workflow job status
 
 ```bash
-curl -s http://localhost:4321/api/chat/intent  # intent events
-curl -s http://localhost:4321/api/emails       # email outbox
+curl -s http://127.0.0.1:3001/api/workflow/events/<eventId>
 ```
+
+Example failure response:
+
+```json
+{
+  "eventId": "<uuid>",
+  "actionId": "send_email",
+  "status": "failed",
+  "parameters": {
+    "to": "recipient@example.com",
+    "subject": "API test",
+    "body": "This is a test from the workflow execution app."
+  },
+  "createdAt": "2026-10-23T09:00:00.000Z",
+  "startedAt": "2026-10-23T09:00:01.000Z",
+  "finishedAt": "2026-10-23T09:00:01.100Z",
+  "error": "BREVO_API_KEY is not configured."
+}
+```
+
+A successful job includes `status: "succeeded"` and a `messageId`.
+
+### 6.10 API: direct email debug endpoint
+
+The lower-level `POST /api/email` route remains for direct debugging. It bypasses
+the queue and is not used by Chat.
+
+```bash
+curl -s -X POST http://127.0.0.1:3001/api/email \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actionId": "send_email",
+    "parameters": {
+      "to": "recipient@example.com",
+      "subject": "API test",
+      "body": "This is a test from the workflow execution app."
+    }
+  }'
+```
+
+Expected response:
+
+```json
+{
+  "status": "sent",
+  "messageId": "<brevo-message-id>"
+}
+```
+
+The endpoint currently has no authentication or rate limiting.
 
 ---
 
 ## 7. Troubleshooting
 
-### `Email failed: EMAIL_FROM (or SMTP_USER) must be set`
+### `BREVO_API_KEY is not configured.`
 
-This happens when `EMAIL_FROM=` exists but is empty while `SMTP_USER` is set.
-The current fallback uses `??`, which does not fall back for empty strings.
+Set `BREVO_API_KEY` in `server/.env` and restart the Bun server. The queued job
+will fail until the key is present.
 
-Workaround:
+### `BREVO_SENDER_EMAIL must be a valid email address.`
 
-- set `EMAIL_FROM` to the same address as `SMTP_USER`; or
-- delete the `EMAIL_FROM=` line entirely.
+Set `BREVO_SENDER_EMAIL` to a valid sender address.
 
-Recommended code fix:
+### Brevo returns `401` / `unauthorized`
 
-```ts
-const from = getEnv('EMAIL_FROM')?.trim() || user;
-```
+- Check that `BREVO_API_KEY` is correct.
+- Confirm the key has transactional email permission.
+- Restart the Bun server after changing `server/.env`.
 
-### `Invalid login` / SMTP 535
+### Brevo rejects the sender
 
-- Use a Google App Password, not the account password.
-- Enable 2-Step Verification.
-- Keep `SMTP_USER` and `EMAIL_FROM` consistent.
-- Remove spaces from the App Password if needed.
+- Verify `BREVO_SENDER_EMAIL` in Brevo under Senders & IPs.
+- Use the exact verified address.
+- With a new Brevo account, sender verification may still be pending.
+
+### `The recipient email address is invalid.`
+
+Use a complete address such as `john@example.com`.
+
+### `Workflow job not found. The server may have restarted.`
+
+The queue is in-memory. Restarting the Bun server removes all jobs. Re-confirm
+the action to enqueue a new job.
+
+### `Timed out waiting for workflow action.`
+
+The job stayed queued or running for 30 seconds. Check the Bun server log and
+the Brevo adapter timeout. The in-memory actor processes jobs serially, so a long
+send delays later jobs.
+
+### Sending never starts
+
+The workflow collects missing fields and requires explicit confirmation. Check
+that the confirmation card is visible and all three fields are present. The
+`POST /api/workflow/events` request must return `202` before polling can start.
+
+### Scheduled email does nothing
+
+`schedule_email` is intentionally not implemented in Chat or the server actor.
+The root machine has a placeholder state that fails the job.
 
 ### Still seeing mock behavior
 
-- Confirm `INTENT_LLM_MOCK=false`.
-- Confirm `GROQ_API_KEY` is set.
-- Restart the dev server.
-- Check the `mock` flag in the `/api/chat/intent` response.
+- Confirm `ACTION_LLM_MOCK=false`.
+- Confirm `GROQ_API_KEY` is set in `server/.env`.
+- Restart the Bun server.
+- Check the `mock` flag in the `/api/chat/action` response.
 
-### `needs_info`
+### Front-end gets `404` or `502` from `/api`
 
-The worker refused to send because a required field is missing or invalid. The
-reason is shown on the intent card and in `GET /api/emails`.
+- Confirm the Bun API is running on the expected port.
+- Check `API_PROXY_TARGET` if you changed the API port.
+- Remember that the Vite proxy applies to development only.
+- In production, configure a reverse proxy for `/api`.
 
-### Groq 429
+### Groq `429`
 
 The provider retries `429`/`5xx` with backoff and respects `Retry-After`.
 Free-tier limits still apply.
-
-### Server won’t start after editing `.env`
-
-Restart it:
-
-```bash
-# stop the current process, then
-npm run dev
-```
 
 ---
 
 ## 8. Security
 
-- Keep API keys and SMTP credentials in `front-end/.env` only.
+- Keep LLM and Brevo credentials in `server/.env` only.
 - `.env` is gitignored; never commit it.
-- Never paste an App Password into chat or an issue.
-- Rotate any credential that may have been exposed.
-- The mock sender performs no network calls.
-- User text is treated as untrusted data by the intent prompt.
+- Never expose `BREVO_API_KEY` to the browser.
+- `POST /api/workflow/events`, `GET /api/workflow/events/:eventId`, and
+  `POST /api/email` are unauthenticated in this prototype. Do not expose them
+  publicly without authentication and rate limiting.
+- The workflow queue is in-memory and single-process.
+- User text is treated as untrusted data by the action prompt.
+- Email bodies are sent as plain text, not HTML.

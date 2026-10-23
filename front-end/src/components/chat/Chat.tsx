@@ -1,16 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMachine } from '@xstate/react';
+import {
+  createSendEmailWorkflow,
+  type SendEmailActionIdentificationResult,
+  type SendEmailParameterName,
+} from '@workflow-execution/workflow';
 import {
   formatActionIdentifier,
   identifyAction,
   type ActionResponse,
 } from '../../lib/action';
+import { enqueueWorkflowAction, waitForWorkflowJob } from '../../lib/workflow';
 
 const MAX_CLARIFICATION_ROUNDS = 2;
+
+const sendEmailMachine = createSendEmailWorkflow();
 
 const SUGGESTIONS = [
   { icon: '✉️', title: 'Send an email', prompt: 'Send an email to john@acme.com about the invoice.' },
   { icon: '🕒', title: 'Schedule an email', prompt: 'Schedule an email to john@acme.com for tomorrow at 9.' },
 ];
+
+const PARAMETER_PROMPTS: Record<SendEmailParameterName, string> = {
+  to: 'Who should receive the email?',
+  subject: 'What should the subject be?',
+  body: 'What should the email say?',
+};
 
 type TranscriptEntry =
   | { id: string; kind: 'user'; content: string }
@@ -81,6 +96,34 @@ function buildClarification(response: ActionResponse): { question: string; optio
   return {
     question: "I couldn't determine a supported action. What would you like to do?",
     options: response.supportedActions,
+  };
+}
+
+function buildSentResponse(
+  messageId: string,
+  parameters: { to: string; subject: string; body: string },
+): ActionResponse {
+  return {
+    result: {
+      action: {
+        identifier: 'send_email',
+        status: 'clear',
+        alternatives: [],
+        summary: `Email sent to ${parameters.to}. Brevo message ID: ${messageId}.`,
+      },
+      parameters: [
+        { name: 'to', value: parameters.to, normalized: parameters.to, evidence: 'confirmed' },
+        { name: 'subject', value: parameters.subject, normalized: parameters.subject, evidence: 'confirmed' },
+        { name: 'body', value: parameters.body, normalized: parameters.body, evidence: 'confirmed' },
+      ],
+      missing: [],
+      assumptions: [],
+      ambiguities: [],
+    },
+    event: null,
+    mock: false,
+    eventCount: 0,
+    supportedActions: ['send_email', 'schedule_email'],
   };
 }
 
@@ -228,6 +271,7 @@ interface Props {
 }
 
 export default function Chat({ user, onSignOut }: Props) {
+  const [state, sendMachine, actor] = useMachine(sendEmailMachine);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -236,10 +280,11 @@ export default function Chat({ user, onSignOut }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>('');
   const hasMessages = transcript.length > 0;
+  const missingParameter = state.context.missing[0];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript, analyzing]);
+  }, [transcript, analyzing, state.value]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -266,8 +311,25 @@ export default function Chat({ user, onSignOut }: Props) {
     const message = (text ?? input).trim();
     if (!message || analyzing) return;
 
+    if (state.matches('collecting')) {
+      const name = state.context.missing[0];
+      if (!name) return;
+      setInput('');
+      append({ id: newId(), kind: 'user', content: message });
+      sendMachine({ type: 'PARAMETER_PROVIDED', name, value: message });
+      return;
+    }
+
+    if (state.matches('confirming') || state.matches('executing')) return;
+
     const sessionId = sessionIdRef.current;
     if (!sessionId) return;
+
+    if (state.matches('completed') || state.matches('failed') || state.matches('cancelled')) {
+      sendMachine({ type: 'RESET' });
+    }
+
+    sendMachine({ type: 'SUBMIT_MESSAGE', message });
 
     const priorEntries = transcript;
     const activeClarification = clarification;
@@ -286,6 +348,7 @@ export default function Chat({ user, onSignOut }: Props) {
     });
 
     if (!result.ok) {
+      sendMachine({ type: 'IDENTIFICATION_FAILED', error: result.error });
       append({ id: newId(), kind: 'error', message: result.error });
       setAnalyzing(false);
       return;
@@ -293,6 +356,30 @@ export default function Chat({ user, onSignOut }: Props) {
 
     const response = result.response;
     const status = response.result.action.status;
+    const identifier = response.result.action.identifier;
+
+    if (status === 'clear' && identifier === 'send_email') {
+      sendMachine({
+        type: 'IDENTIFIED',
+        result: response.result as SendEmailActionIdentificationResult,
+      });
+      append({ id: newId(), kind: 'action', response });
+      setClarification(null);
+      setAnalyzing(false);
+      return;
+    }
+
+    if (status === 'clear' && identifier === 'schedule_email') {
+      append({ id: newId(), kind: 'action', response });
+      append({
+        id: newId(),
+        kind: 'error',
+        message: 'Scheduling is identified but not implemented yet. Send this email now instead.',
+      });
+      setClarification(null);
+      setAnalyzing(false);
+      return;
+    }
 
     if (status === 'clear') {
       append({ id: newId(), kind: 'action', response });
@@ -306,9 +393,14 @@ export default function Chat({ user, onSignOut }: Props) {
     if (nextRound <= MAX_CLARIFICATION_ROUNDS) {
       const { question, options } = buildClarification(response);
       const entryId = newId();
+      sendMachine({
+        type: 'NEEDS_CLARIFICATION',
+        result: response.result as SendEmailActionIdentificationResult,
+      });
       append({ id: entryId, kind: 'clarification', question, options, response });
       setClarification({ entryId, response, round: nextRound });
     } else {
+      if (state.matches('clarifying')) sendMachine({ type: 'RESET' });
       append({ id: newId(), kind: 'action', response });
       setClarification(null);
     }
@@ -332,9 +424,66 @@ export default function Chat({ user, onSignOut }: Props) {
       },
     };
 
+    if (actionIdentifier === 'send_email') {
+      sendMachine({
+        type: 'CLARIFICATION_CHOSEN',
+        result: response.result as SendEmailActionIdentificationResult,
+      });
+    } else if (state.matches('clarifying')) {
+      sendMachine({ type: 'RESET' });
+    }
+
     append({ id: newId(), kind: 'action', response });
     setClarification(null);
   };
+
+  const confirmSend = async () => {
+    if (!state.matches('confirming')) return;
+
+    const { to, subject, body } = state.context.parameters;
+    if (!to || !subject || !body) {
+      sendMachine({ type: 'EDIT' });
+      return;
+    }
+
+    sendMachine({ type: 'CONFIRM' });
+    const executing = actor.getSnapshot();
+    if (!executing.matches('executing')) return;
+
+    const enqueued = await enqueueWorkflowAction({
+      actionId: 'send_email',
+      parameters: { to, subject, body },
+      sessionId: sessionIdRef.current || undefined,
+    });
+
+    if (!enqueued.ok) {
+      sendMachine({ type: 'EXECUTION_FAILED', error: enqueued.error });
+      append({ id: newId(), kind: 'error', message: enqueued.error });
+      return;
+    }
+
+    const execution = await waitForWorkflowJob(enqueued.eventId);
+
+    if (!execution.ok) {
+      sendMachine({ type: 'EXECUTION_FAILED', error: execution.error });
+      append({ id: newId(), kind: 'error', message: execution.error });
+      return;
+    }
+
+    sendMachine({ type: 'EXECUTION_SUCCEEDED', messageId: execution.messageId });
+    append({
+      id: newId(),
+      kind: 'action',
+      response: buildSentResponse(execution.messageId, { to, subject, body }),
+    });
+  };
+
+  const startNewRequest = () => {
+    sendMachine({ type: 'RESET' });
+    setClarification(null);
+  };
+
+  const inputDisabled = analyzing || state.matches('confirming') || state.matches('executing');
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -434,6 +583,123 @@ export default function Chat({ user, onSignOut }: Props) {
       </div>
 
       <div className="px-4 pb-4 pt-2 border-t border-neutral-100">
+        {state.matches('collecting') && missingParameter && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+              Collecting details
+            </p>
+            <p className="mt-1 text-sm text-neutral-800">{PARAMETER_PROMPTS[missingParameter]}</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Still missing: {state.context.missing.join(', ')}
+            </p>
+            <button
+              type="button"
+              onClick={() => sendMachine({ type: 'CANCEL' })}
+              className="mt-2 text-xs text-neutral-500 hover:text-neutral-900"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {state.matches('confirming') && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+              Ready to send
+            </p>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="text-neutral-500">To</dt>
+              <dd className="text-neutral-900">{state.context.parameters.to}</dd>
+              <dt className="text-neutral-500">Subject</dt>
+              <dd className="text-neutral-900">{state.context.parameters.subject}</dd>
+              <dt className="text-neutral-500">Body</dt>
+              <dd className="whitespace-pre-wrap text-neutral-900">{state.context.parameters.body}</dd>
+            </dl>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmSend()}
+                className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+              >
+                Confirm and send
+              </button>
+              <button
+                type="button"
+                onClick={() => sendMachine({ type: 'EDIT' })}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-neutral-900 hover:text-neutral-900"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => sendMachine({ type: 'CANCEL' })}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:text-neutral-900"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {state.matches('executing') && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
+            <div className="flex items-center gap-2 text-xs text-neutral-500">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
+              Waiting for the server workflow…
+            </div>
+          </div>
+        )}
+
+        {state.matches('completed') && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-white p-4">
+            <p className="text-sm text-neutral-800">
+              Email sent. Message ID: {state.context.execution?.messageId}
+            </p>
+            <button
+              type="button"
+              onClick={startNewRequest}
+              className="mt-2 text-xs text-neutral-500 hover:text-neutral-900"
+            >
+              New request
+            </button>
+          </div>
+        )}
+
+        {state.matches('failed') && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-sm text-neutral-800">{state.context.error ?? 'Something went wrong.'}</p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => sendMachine({ type: 'RETRY' })}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-neutral-900 hover:text-neutral-900"
+              >
+                Try again
+              </button>
+              <button
+                type="button"
+                onClick={startNewRequest}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:text-neutral-900"
+              >
+                Start over
+              </button>
+            </div>
+          </div>
+        )}
+
+        {state.matches('cancelled') && (
+          <div className="max-w-3xl mx-auto mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+            <p className="text-sm text-neutral-800">Cancelled.</p>
+            <button
+              type="button"
+              onClick={startNewRequest}
+              className="mt-2 text-xs text-neutral-500 hover:text-neutral-900"
+            >
+              New request
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -447,10 +713,16 @@ export default function Chat({ user, onSignOut }: Props) {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               className="w-full bg-white border border-neutral-200 rounded-2xl px-4 py-3 pr-12 text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent shadow-sm"
-              placeholder={clarification ? 'Type your answer…' : 'Type a message…'}
-              disabled={analyzing}
+              placeholder={
+                state.matches('collecting')
+                  ? 'Type your answer…'
+                  : state.matches('confirming')
+                    ? 'Confirm or edit above'
+                    : 'Type a message…'
+              }
+              disabled={inputDisabled}
             />
-            {input.trim() && !analyzing && (
+            {input.trim() && !inputDisabled && (
               <button
                 type="submit"
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-xl bg-neutral-900 text-white flex items-center justify-center hover:bg-neutral-700 transition-colors"

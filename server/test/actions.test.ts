@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_ACTIONS } from '../src/server/actions/definitions';
+import { APP_ACTIONS } from '../src/actions/definitions';
 
 describe('APP_ACTIONS', () => {
   it('contains only the two email actions', () => {
