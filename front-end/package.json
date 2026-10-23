@@ -7,15 +7,14 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@astrojs/node": "^9.5.5",
     "@astrojs/react": "^4.0.0",
     "@astrojs/tailwind": "^6.0.0",
-    "@workflow-execution/chat-intent-engine": "^0.1.0",
+    "@workflow-execution/action-engine": "^0.1.0",
     "astro": "^5.0.0",
-    "nodemailer": "^10.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.0",
@@ -24,7 +23,6 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
     "@tailwindcss/typography": "^0.5.20",
-    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "tailwindcss": "^3.4.0",

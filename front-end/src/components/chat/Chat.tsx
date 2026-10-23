@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  detectIntent,
-  fetchSentEmails,
-  formatIntentId,
-  resolveIntent,
-  type IntentResponse,
-  type SentEmailRecord,
-} from '../../lib/intent';
+  formatActionIdentifier,
+  identifyAction,
+  resolveAction,
+  type ActionResponse,
+} from '../../lib/action';
 
 const MAX_CLARIFICATION_ROUNDS = 2;
 
@@ -18,13 +16,13 @@ const SUGGESTIONS = [
 
 type TranscriptEntry =
   | { id: string; kind: 'user'; content: string }
-  | { id: string; kind: 'intent'; response: IntentResponse }
+  | { id: string; kind: 'action'; response: ActionResponse }
   | {
       id: string;
       kind: 'clarification';
       question: string;
       options: string[];
-      response: IntentResponse;
+      response: ActionResponse;
     }
   | { id: string; kind: 'error'; message: string };
 
@@ -32,7 +30,7 @@ type ClarificationEntry = Extract<TranscriptEntry, { kind: 'clarification' }>;
 
 interface ActiveClarification {
   entryId: string;
-  response: IntentResponse;
+  response: ActionResponse;
   round: number;
 }
 
@@ -42,19 +40,6 @@ function newId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
-}
-
-async function waitForEmailResult(
-  sessionId: string,
-  messageId: string,
-): Promise<SentEmailRecord | null> {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const emails = await fetchSentEmails(sessionId);
-    const match = emails.find((email) => email.messageId === messageId);
-    if (match) return match;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return null;
 }
 
 function buildHistory(
@@ -67,11 +52,11 @@ function buildHistory(
       history.push({ role: 'user', content: entry.content });
     } else if (entry.kind === 'clarification') {
       history.push({ role: 'assistant', content: entry.question });
-    } else if (entry.kind === 'intent') {
-      const { intent } = entry.response.result;
+    } else if (entry.kind === 'action') {
+      const { action } = entry.response.result;
       history.push({
         role: 'assistant',
-        content: `Intent: ${intent.primary ?? 'unknown'} (${intent.status}). ${intent.summary}`,
+        content: `Action: ${action.identifier ?? 'unknown'} (${action.status}). ${action.summary}`,
       });
     }
   }
@@ -79,25 +64,25 @@ function buildHistory(
   return history;
 }
 
-function buildClarification(response: IntentResponse): { question: string; options: string[] } {
-  const { intent } = response.result;
+function buildClarification(response: ActionResponse): { question: string; options: string[] } {
+  const { action } = response.result;
 
-  if (intent.status === 'ambiguous') {
+  if (action.status === 'ambiguous') {
     const options = [
-      ...new Set([intent.primary, ...intent.alternatives].filter((id): id is string => Boolean(id))),
+      ...new Set([action.identifier, ...action.alternatives].filter((id): id is string => Boolean(id))),
     ];
     return {
       question:
         options.length > 0
-          ? `I can interpret this as ${options.map(formatIntentId).join(' or ')}. Which did you mean?`
+          ? `I can interpret this as ${options.map(formatActionIdentifier).join(' or ')}. Which did you mean?`
           : 'What did you mean?',
       options,
     };
   }
 
   return {
-    question: "I couldn't determine the intent. What would you like to do?",
-    options: response.supportedIntents,
+    question: "I couldn't determine a supported action. What would you like to do?",
+    options: response.supportedActions,
   };
 }
 
@@ -130,33 +115,21 @@ function UserBubble({ content }: { content: string }) {
   );
 }
 
-function IntentCard({
-  response,
-  emailResult,
-}: {
-  response: IntentResponse;
-  emailResult?: SentEmailRecord;
-}) {
-  const { intent } = response.result;
-  const statusClass =
-    intent.status === 'clear'
-      ? 'border-neutral-900 bg-neutral-900 text-white'
-      : intent.status === 'ambiguous'
-        ? 'border-neutral-400 bg-neutral-100 text-neutral-700'
-        : 'border-neutral-200 bg-neutral-50 text-neutral-500';
+function ActionCard({ response }: { response: ActionResponse }) {
+  const { action } = response.result;
 
   return (
     <div className="flex justify-start">
       <div className="w-full max-w-[85%] rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
-            Intent
+            Action Identifier
           </span>
           <span className="font-semibold text-neutral-900">
-            {intent.primary ? formatIntentId(intent.primary) : 'Unknown'}
+            {action.identifier ? formatActionIdentifier(action.identifier) : 'Unknown'}
           </span>
-          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}>
-            {intent.status}
+          <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] text-neutral-500">
+            {action.status}
           </span>
           {response.mock && (
             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500">
@@ -165,44 +138,31 @@ function IntentCard({
           )}
         </div>
 
-        <p className="mt-2 text-sm text-neutral-700">{intent.summary}</p>
+        {action.identifier && (
+          <p className="mt-1 text-xs text-neutral-400">{action.identifier}</p>
+        )}
 
-        {intent.alternatives.length > 0 && (
+        <p className="mt-2 text-sm text-neutral-700">{action.summary}</p>
+
+        {action.alternatives.length > 0 && (
           <p className="mt-2 text-xs text-neutral-500">
-            Alternatives: {intent.alternatives.map(formatIntentId).join(', ')}
+            Alternatives: {action.alternatives.map(formatActionIdentifier).join(', ')}
           </p>
         )}
 
-        {response.result.unknowns.length > 0 && (
-          <div className="mt-2">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">
-              Unknown
-            </p>
-            <ul className="mt-1 list-disc pl-5 text-xs text-neutral-500">
-              {response.result.unknowns.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
+        {response.result.missing.length > 0 && (
+          <p className="mt-2 text-xs text-neutral-500">
+            Missing: {response.result.missing.join(', ')}
+          </p>
         )}
 
-        {intent.primary === 'send_email' && (
-          <div className="mt-2 text-xs">
-            {emailResult ? (
-              emailResult.status === 'sent' ? (
-                <span className="text-neutral-700">Email sent to {emailResult.to}</span>
-              ) : emailResult.status === 'needs_info' ? (
-                <span className="text-neutral-600">
-                  Email needs info: {emailResult.reason ?? 'Missing details.'}
-                </span>
-              ) : (
-                <span className="text-neutral-600">
-                  Email failed: {emailResult.reason ?? 'Unknown error.'}
-                </span>
-              )
-            ) : (
-              <span className="text-neutral-400">Processing email…</span>
-            )}
+        {response.result.parameters.length > 0 && (
+          <div className="mt-3 space-y-1 text-xs text-neutral-600">
+            {response.result.parameters.map((parameter) => (
+              <p key={parameter.name}>
+                {parameter.name}: {parameter.value}
+              </p>
+            ))}
           </div>
         )}
 
@@ -223,7 +183,7 @@ function ClarificationCard({
 }: {
   entry: ClarificationEntry;
   disabled: boolean;
-  onChoose: (entry: ClarificationEntry, intentId: string) => void;
+  onChoose: (entry: ClarificationEntry, actionIdentifier: string) => void;
 }) {
   return (
     <div className="flex justify-start">
@@ -242,7 +202,7 @@ function ClarificationCard({
               onClick={() => onChoose(entry, id)}
               className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-neutral-900 hover:text-neutral-900 disabled:opacity-50"
             >
-              {formatIntentId(id)}
+              {formatActionIdentifier(id)}
             </button>
           ))}
         </div>
@@ -274,7 +234,6 @@ export default function Chat({ user, onSignOut }: Props) {
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [clarification, setClarification] = useState<ActiveClarification | null>(null);
-  const [emailResults, setEmailResults] = useState<Record<string, SentEmailRecord>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>('');
@@ -319,12 +278,12 @@ export default function Chat({ user, onSignOut }: Props) {
     setAnalyzing(true);
     append({ id: newId(), kind: 'user', content: message });
 
-    const intentMessageId = newId();
-    const result = await detectIntent({
+    const actionMessageId = newId();
+    const result = await identifyAction({
       message,
       history: buildHistory(priorEntries),
       sessionId,
-      messageId: intentMessageId,
+      messageId: actionMessageId,
       timestamp: new Date().toISOString(),
     });
 
@@ -335,21 +294,11 @@ export default function Chat({ user, onSignOut }: Props) {
     }
 
     const response = result.response;
-    const status = response.result.intent.status;
+    const status = response.result.action.status;
 
     if (status === 'clear') {
-      append({ id: newId(), kind: 'intent', response });
+      append({ id: newId(), kind: 'action', response });
       setClarification(null);
-
-      if (response.result.intent.primary === 'send_email' && response.event?.messageId) {
-        const messageId = response.event.messageId;
-        void waitForEmailResult(sessionId, messageId).then((email) => {
-          if (email) {
-            setEmailResults((prev) => ({ ...prev, [messageId]: email }));
-          }
-        });
-      }
-
       setAnalyzing(false);
       return;
     }
@@ -362,38 +311,29 @@ export default function Chat({ user, onSignOut }: Props) {
       append({ id: entryId, kind: 'clarification', question, options, response });
       setClarification({ entryId, response, round: nextRound });
     } else {
-      append({ id: newId(), kind: 'intent', response });
+      append({ id: newId(), kind: 'action', response });
       setClarification(null);
     }
 
     setAnalyzing(false);
   };
 
-  const chooseOption = async (entry: ClarificationEntry, intentId: string) => {
+  const chooseOption = async (entry: ClarificationEntry, actionIdentifier: string) => {
     if (analyzing) return;
 
     setAnalyzing(true);
 
-    const result = await resolveIntent({
+    const result = await resolveAction({
       result: entry.response.result,
-      intentId,
+      actionIdentifier,
       sessionId: sessionIdRef.current,
       messageId: newId(),
     });
 
     if (result.ok) {
       const response = result.response;
-      append({ id: newId(), kind: 'intent', response });
+      append({ id: newId(), kind: 'action', response });
       setClarification(null);
-
-      if (response.result.intent.primary === 'send_email' && response.event?.messageId) {
-        const messageId = response.event.messageId;
-        void waitForEmailResult(sessionIdRef.current, messageId).then((email) => {
-          if (email) {
-            setEmailResults((prev) => ({ ...prev, [messageId]: email }));
-          }
-        });
-      }
     } else {
       append({ id: newId(), kind: 'error', message: result.error });
     }
@@ -416,7 +356,7 @@ export default function Chat({ user, onSignOut }: Props) {
               ✦
             </text>
           </svg>
-          <span className="font-semibold text-neutral-900 text-lg">Intent</span>
+          <span className="font-semibold text-neutral-900 text-lg">Action Engine</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-neutral-500 hidden sm:inline">{user.email}</span>
@@ -440,7 +380,7 @@ export default function Chat({ user, onSignOut }: Props) {
               What do you want to do?
             </h1>
             <p className="text-neutral-500 text-center max-w-md mb-10 text-sm sm:text-base">
-              Type a message. I’ll identify the intent and fire an event when it’s clear.
+              Type a message. I’ll identify the action when it’s clear.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
               {SUGGESTIONS.map((suggestion) => (
@@ -466,15 +406,8 @@ export default function Chat({ user, onSignOut }: Props) {
               if (entry.kind === 'user') {
                 return <UserBubble key={entry.id} content={entry.content} />;
               }
-              if (entry.kind === 'intent') {
-                const messageId = entry.response.event?.messageId;
-                return (
-                  <IntentCard
-                    key={entry.id}
-                    response={entry.response}
-                    emailResult={messageId ? emailResults[messageId] : undefined}
-                  />
-                );
+              if (entry.kind === 'action') {
+                return <ActionCard key={entry.id} response={entry.response} />;
               }
               if (entry.kind === 'clarification') {
                 return (
@@ -494,7 +427,7 @@ export default function Chat({ user, onSignOut }: Props) {
                 <div className="rounded-2xl rounded-bl-md border border-neutral-200 bg-white px-4 py-3 shadow-sm">
                   <div className="flex items-center gap-2 text-xs text-neutral-500">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
-                    Identifying intent…
+                    Identifying action…
                   </div>
                 </div>
               </div>
