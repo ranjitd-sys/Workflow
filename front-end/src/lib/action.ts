@@ -50,12 +50,6 @@ export interface IdentifyActionInput {
   timestamp?: string;
 }
 
-export interface ResolveActionInput {
-  result: ActionResponse['result'];
-  actionIdentifier: string;
-  sessionId: string;
-  messageId?: string;
-}
 
 export function formatActionIdentifier(id: string): string {
   return id
@@ -96,6 +90,3 @@ export function identifyAction(input: IdentifyActionInput): Promise<ActionReques
   return postAction('/api/chat/action', input);
 }
 
-export function resolveAction(input: ResolveActionInput): Promise<ActionRequestResult> {
-  return postAction('/api/chat/action/resolve', input);
-}

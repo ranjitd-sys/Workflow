@@ -2,16 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import {
   formatActionIdentifier,
   identifyAction,
-  resolveAction,
   type ActionResponse,
 } from '../../lib/action';
 
 const MAX_CLARIFICATION_ROUNDS = 2;
 
 const SUGGESTIONS = [
-  { icon: '✉️', title: 'Request something', prompt: 'Please send me the Q3 report by Friday.' },
-  { icon: '❓', title: 'Ask a question', prompt: 'What time is the meeting tomorrow?' },
-  { icon: '📅', title: 'Schedule a meeting', prompt: 'Can we move our call to Thursday?' },
+  { icon: '✉️', title: 'Send an email', prompt: 'Send an email to john@acme.com about the invoice.' },
+  { icon: '🕒', title: 'Schedule an email', prompt: 'Schedule an email to john@acme.com for tomorrow at 9.' },
 ];
 
 type TranscriptEntry =
@@ -318,27 +316,24 @@ export default function Chat({ user, onSignOut }: Props) {
     setAnalyzing(false);
   };
 
-  const chooseOption = async (entry: ClarificationEntry, actionIdentifier: string) => {
+  const chooseOption = (entry: ClarificationEntry, actionIdentifier: string) => {
     if (analyzing) return;
 
-    setAnalyzing(true);
+    const response: ActionResponse = {
+      ...entry.response,
+      result: {
+        ...entry.response.result,
+        action: {
+          identifier: actionIdentifier,
+          status: 'clear',
+          alternatives: [],
+          summary: `You selected ${formatActionIdentifier(actionIdentifier)}.`,
+        },
+      },
+    };
 
-    const result = await resolveAction({
-      result: entry.response.result,
-      actionIdentifier,
-      sessionId: sessionIdRef.current,
-      messageId: newId(),
-    });
-
-    if (result.ok) {
-      const response = result.response;
-      append({ id: newId(), kind: 'action', response });
-      setClarification(null);
-    } else {
-      append({ id: newId(), kind: 'error', message: result.error });
-    }
-
-    setAnalyzing(false);
+    append({ id: newId(), kind: 'action', response });
+    setClarification(null);
   };
 
   return (

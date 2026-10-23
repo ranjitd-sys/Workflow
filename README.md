@@ -34,7 +34,7 @@ Without a key, the app uses a local mock classifier.
 
 The app currently identifies these action identifiers:
 
-`request`, `send_email`, `question`, `informational`, `meeting`, `follow_up`, `complaint`, `approval`, `social`, `notification`, `marketing`, `other`.
+`send_email`, `schedule_email`.
 
 ## Flow
 

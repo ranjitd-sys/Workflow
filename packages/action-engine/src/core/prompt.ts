@@ -15,7 +15,7 @@ Core rules:
 - If two or more materially different actions are plausible, use status "ambiguous" and list the alternatives.
 - A clear action can still have missing parameters; use missing instead of downgrading the action.
 - Return only the structured interpretation. Do not add commentary.
-
+  
 Status definitions:
 - "clear": one action from the catalog is reasonably well established.
 - "ambiguous": the message supports multiple materially different actions.

@@ -1,5 +1,9 @@
 # Architecture
 
+See [SYSTEM_DIAGRAM.md](./SYSTEM_DIAGRAM.md) for the complete system diagram,
+and [ACTION_ENGINE_DIAGRAM.md](./ACTION_ENGINE_DIAGRAM.md) for the detailed
+component, request, event, and UI diagrams.
+
 ## Purpose and boundaries
 
 The system has two responsibilities:
@@ -31,7 +35,6 @@ User message
 │   ├── src/components/chat/Chat.tsx
 │   ├── src/lib/action.ts
 │   ├── src/pages/api/chat/action.ts
-│   ├── src/pages/api/chat/action/resolve.ts
 │   └── src/server/
 │       ├── action.ts
 │       ├── mock-action.ts

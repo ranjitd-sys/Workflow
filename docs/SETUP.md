@@ -165,7 +165,7 @@ SMTP tests use an injected transport and do not send real email.
 
 Type:
 
-> What time is the meeting tomorrow?
+> Send an email to john@acme.com about the invoice.
 
 Expected: a **Question** intent card with `clear`, an event id, and no email
 side effect.
