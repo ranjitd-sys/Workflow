@@ -42,7 +42,11 @@ export async function sendTransactionalEmail(
     throw new BrevoApiError('BREVO_API_KEY is not configured.', 500, 'missing_api_key');
   }
   if (!senderEmail || !validateEmail(senderEmail)) {
-    throw new BrevoApiError('BREVO_SENDER_EMAIL must be a valid email address.', 500, 'missing_sender');
+    throw new BrevoApiError(
+      'BREVO_SENDER_EMAIL must be a valid email address.',
+      500,
+      'missing_sender',
+    );
   }
   if (!validateEmail(recipient)) {
     throw new BrevoApiError('The recipient email address is invalid.', 400, 'invalid_recipient');

@@ -1,7 +1,7 @@
 import type { WorkflowActionId } from '@workflow-execution/workflow';
 import { APP_ACTIONS } from '../actions/definitions';
 import { isRecord, json, readJson } from '../http/json';
-import { enqueueWorkflowAction } from '../workflow/runtime';
+import { enqueueWorkflowAction, WorkflowServiceError } from '../workflow-client';
 
 const WORKFLOW_ACTIONS = new Set<WorkflowActionId>(['send_email', 'schedule_email']);
 
@@ -52,7 +52,7 @@ export async function handleWorkflowEvents(request: Request): Promise<Response> 
   }
 
   try {
-    const job = enqueueWorkflowAction({
+    const job = await enqueueWorkflowAction({
       actionId,
       parameters,
       sessionId:
@@ -72,9 +72,12 @@ export async function handleWorkflowEvents(request: Request): Promise<Response> 
       202,
     );
   } catch (error) {
+    if (error instanceof WorkflowServiceError) {
+      return json({ error: error.message }, error.status);
+    }
     return json(
       { error: error instanceof Error ? error.message : 'Failed to enqueue workflow action.' },
-      500,
+      502,
     );
   }
 }

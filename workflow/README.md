@@ -1,61 +1,65 @@
 # Workflow package
 
-This package contains the browser-side conversation machine and the shared
-workflow contracts used by both the Astro front-end and the Bun API.
-
-Server-only execution code lives in the top-level `server/` workspace:
-`InMemoryWorkflowQueue`, the root XState machine, the send/schedule actors, and
-the workflow runtime.
+This package owns workflow contracts and the standalone workflow execution
+service. The browser conversation machine lives in the front-end at
+`front-end/src/lib/chat/send-email-conversation-machine.ts`.
 
 ## Shared contracts
 
-`src/contracts/workflow.ts` exports the action IDs, the
+`src/contracts/workflow.ts` exports action IDs, the
 `workflow.action.requested` event shape, queue/job types, and the `WorkflowQueue`
-interface.
+interface. The package root (`src/index.ts`) exports only these browser-safe
+contracts.
 
-## send_email
+## Workflow service
 
-The client machine is created by `createSendEmailConversationMachine()` and exported from
-`src/email/send-email.workflow.ts`.
+`src/server/service.ts` starts the workflow service on `HOST:PORT` (default
+`127.0.0.1:3002`). The service owns:
 
-States:
+- the in-memory FIFO queue;
+- the process-wide runtime singleton;
+- the main workflow machine;
+- the `send_email` and `schedule_email` actors;
+- Brevo email transport and configuration.
 
-```text
-idle
-  -> identifying
-  -> clarifying
-  -> collecting
-  -> confirming
-  -> executing
-  -> completed
-  -> failed
-  -> cancelled
+Internal service endpoints:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Service health |
+| `POST` | `/internal/workflow/events` | Enqueue a confirmed action |
+| `GET` | `/internal/workflow/events/:eventId` | Read job status |
+| `POST` | `/internal/email` | Direct debug email send |
+
+The public Bun API in `server/` proxies these endpoints. The workflow service is
+not intended to be exposed publicly.
+
+```bash
+npm run dev:workflow
+npm run start:workflow
 ```
 
-Main events:
+Configuration lives in `workflow/.env`; copy `workflow/.env.example` to start.
 
-| Event | Purpose |
-|---|---|
-| `SUBMIT_MESSAGE` | Begin identification |
-| `IDENTIFIED` | Store a clear result and route to collecting/confirming |
-| `NEEDS_CLARIFICATION` | Store an ambiguous/unknown result |
-| `CLARIFICATION_CHOSEN` | Apply a selected result |
-| `PARAMETER_PROVIDED` | Merge one collected field |
-| `CONFIRM` | Move to executing |
-| `EDIT` | Re-open all required fields |
-| `EXECUTION_SUCCEEDED` | Store the Brevo message ID |
-| `EXECUTION_FAILED` | Store the error |
-| `RETRY` / `RESET` / `CANCEL` | Recover or exit |
+## Execution flow
 
-The machine is pure and performs no I/O. After `CONFIRM`, `Chat.tsx` calls the
-Bun API to enqueue the confirmed action, polls job status, and sends the
-execution result back into the machine. No workflow state is persisted; a page
-refresh resets it.
+```text
+workflow action event
+  -> main machine
+  -> actor registry[event.actionId]
+  -> send_email        -> Brevo
+  -> schedule_email    -> placeholder failure
+  -> job succeeded/failed in the in-memory queue
+```
 
-## Add a new workflow
+The queue is in-memory and single-process. Restarting the workflow service
+removes all jobs. Multiple workflow instances do not share jobs or status;
+horizontal scaling will require shared state such as Redis or sticky routing.
 
-1. Add the client machine and shared contracts.
-2. Export them from `src/index.ts`.
-3. Add client tests in `test/`.
-4. Add the server actor, root-machine state, and route wiring in `server/`.
-5. Wire the UI in `front-end/src/components/chat/Chat.tsx`.
+## Tests
+
+```bash
+npm test
+```
+
+Tests cover the main machine, in-memory queue, and Brevo adapter.

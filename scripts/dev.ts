@@ -9,6 +9,11 @@ const commands = [
     stdout: 'inherit',
     stderr: 'inherit',
   }),
+  Bun.spawn(['npm', 'run', 'dev:workflow'], {
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  }),
 ];
 
 let stopping = false;

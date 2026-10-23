@@ -4,16 +4,10 @@ import {
   WORKFLOW_ACTION_REQUESTED_EVENT_TYPE,
   type WorkflowActionId,
   type WorkflowActionRequestedEvent,
-} from '@workflow-execution/workflow';
-import type { BrevoConfig } from '../src/email/brevo';
-import { InMemoryWorkflowQueue } from '../src/workflow/queue/in-memory-queue';
-import { createWorkflowMachine } from '../src/workflow/root-machine';
-
-const brevo: BrevoConfig = {
-  apiKey: 'test-key',
-  senderEmail: 'sender@example.com',
-  senderName: 'Sender',
-};
+} from '../../src/contracts/workflow';
+import type { WorkflowActorRegistry } from '../../src/server/actors';
+import { createMainWorkflowMachine } from '../../src/server/main-machine';
+import { TestWorkflowQueue } from './test-queue';
 
 function makeEvent(
   id: string,
@@ -37,28 +31,24 @@ function makeEvent(
   };
 }
 
-function brevoResponse(messageId: string) {
-  return {
-    ok: true,
-    status: 201,
-    json: async () => ({ messageId }),
-  };
-}
-
-describe('workflow machine', () => {
+describe('main workflow machine', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it('routes send_email to Brevo and records success', async () => {
-    const queue = new InMemoryWorkflowQueue();
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
-      brevoResponse('msg-1'),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    const actor = createActor(createWorkflowMachine({ queue, brevo }));
+  it('routes send_email to the actor and records success', async () => {
+    const queue = new TestWorkflowQueue();
+    const sendEmail = vi.fn(async (_event: WorkflowActionRequestedEvent) => ({
+      messageId: 'msg-1',
+    }));
+    const actors: WorkflowActorRegistry = {
+      send_email: async (event) => sendEmail(event),
+      schedule_email: async () => {
+        throw new Error('schedule_email is not implemented yet.');
+      },
+    };
+    const actor = createActor(createMainWorkflowMachine({ queue, actors }));
     actor.start();
 
     queue.enqueue(makeEvent('e1'));
@@ -67,13 +57,10 @@ describe('workflow machine', () => {
       timeout: 1_000,
     });
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.brevo.com/v3/smtp/email');
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      to: [{ email: 'john@acme.com' }],
-      subject: 'Invoice',
-      textContent: 'Please find the invoice attached.',
+    expect(sendEmail).toHaveBeenCalled();
+    expect(sendEmail.mock.calls[0]?.[0]).toMatchObject({
+      id: 'e1',
+      actionId: 'send_email',
     });
     expect(queue.getJob('e1')).toMatchObject({
       status: 'succeeded',
@@ -83,18 +70,17 @@ describe('workflow machine', () => {
     actor.stop();
   });
 
-  it('records send failures', async () => {
-    const queue = new InMemoryWorkflowQueue();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => ({
-        ok: false,
-        status: 500,
-        json: async () => ({ message: 'Brevo unavailable' }),
-      })),
-    );
-
-    const actor = createActor(createWorkflowMachine({ queue, brevo }));
+  it('records actor failures', async () => {
+    const queue = new TestWorkflowQueue();
+    const actors: WorkflowActorRegistry = {
+      send_email: async () => {
+        throw new Error('Brevo unavailable');
+      },
+      schedule_email: async () => {
+        throw new Error('schedule_email is not implemented yet.');
+      },
+    };
+    const actor = createActor(createMainWorkflowMachine({ queue, actors }));
     actor.start();
 
     queue.enqueue(makeEvent('e1'));
@@ -108,11 +94,15 @@ describe('workflow machine', () => {
   });
 
   it('routes schedule_email to the placeholder actor and fails', async () => {
-    const queue = new InMemoryWorkflowQueue();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const actor = createActor(createWorkflowMachine({ queue, brevo }));
+    const queue = new TestWorkflowQueue();
+    const sendEmail = vi.fn();
+    const actors: WorkflowActorRegistry = {
+      send_email: async (event) => sendEmail(event),
+      schedule_email: async () => {
+        throw new Error('schedule_email is not implemented yet.');
+      },
+    };
+    const actor = createActor(createMainWorkflowMachine({ queue, actors }));
     actor.start();
 
     queue.enqueue(makeEvent('s1', 'schedule_email'));
@@ -121,23 +111,27 @@ describe('workflow machine', () => {
       timeout: 1_000,
     });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
     expect(queue.getJob('s1')?.error).toContain('not implemented');
     actor.stop();
   });
 
   it('processes queued jobs serially', async () => {
-    const queue = new InMemoryWorkflowQueue();
+    const queue = new TestWorkflowQueue();
     const pending: Array<(messageId: string) => void> = [];
-    const fetchMock = vi.fn(
-      () =>
-        new Promise((resolve) => {
-          pending.push((messageId) => resolve(brevoResponse(messageId)));
+    const sendEmail = vi.fn(
+      (_event: WorkflowActionRequestedEvent) =>
+        new Promise<{ messageId: string }>((resolve) => {
+          pending.push((messageId) => resolve({ messageId }));
         }),
     );
-    vi.stubGlobal('fetch', fetchMock);
-
-    const actor = createActor(createWorkflowMachine({ queue, brevo }));
+    const actors: WorkflowActorRegistry = {
+      send_email: async (event) => sendEmail(event),
+      schedule_email: async () => {
+        throw new Error('schedule_email is not implemented yet.');
+      },
+    };
+    const actor = createActor(createMainWorkflowMachine({ queue, actors }));
     actor.start();
 
     queue.enqueue(makeEvent('e1'));
@@ -146,14 +140,14 @@ describe('workflow machine', () => {
     await waitFor(actor, () => queue.getJob('e1')?.status === 'running', {
       timeout: 1_000,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
 
     pending[0]('msg-1');
 
     await waitFor(actor, () => queue.getJob('e2')?.status === 'running', {
       timeout: 1_000,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sendEmail).toHaveBeenCalledTimes(2);
 
     pending[1]('msg-2');
 

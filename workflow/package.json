@@ -5,7 +5,19 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "default": "./src/server/index.ts"
+    }
+  },
   "scripts": {
+    "dev": "bun --watch src/server/service.ts",
+    "start": "bun src/server/service.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
@@ -13,6 +25,8 @@
     "xstate": "^5.33.3"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

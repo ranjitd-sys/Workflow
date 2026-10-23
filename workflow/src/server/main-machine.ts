@@ -1,28 +1,43 @@
-import { assign, fromCallback, raise, setup } from 'xstate';
-import type { WorkflowActionRequestedEvent, WorkflowQueue } from '@workflow-execution/workflow';
-import { sendEmailActor } from './actors/send-email.actor';
-import { scheduleEmailActor } from './actors/schedule-email.actor';
-import type { BrevoConfig } from '../email/brevo';
+import { assign, fromCallback, fromPromise, raise, setup } from 'xstate';
+import type { WorkflowActionRequestedEvent, WorkflowQueue } from '../contracts/workflow';
+import type { WorkflowActorRegistry } from './actors';
 
-export interface WorkflowMachineDependencies {
-  queue: WorkflowQueue;
-  brevo: BrevoConfig;
-}
-
-export interface WorkflowMachineContext {
+export interface MainMachineContext {
   current: WorkflowActionRequestedEvent | null;
   result: { messageId?: string } | null;
   error?: string;
 }
 
-export type WorkflowMachineEvent = { type: 'QUEUE_WAKE' };
+export type MainMachineEvent = { type: 'QUEUE_WAKE' };
+
+export interface MainWorkflowMachineDependencies {
+  queue: WorkflowQueue;
+  actors: WorkflowActorRegistry;
+}
 
 function now(): string {
   return new Date().toISOString();
 }
 
-export function createWorkflowMachine(dependencies: WorkflowMachineDependencies) {
-  const { queue, brevo } = dependencies;
+const runActor = fromPromise(
+  async ({
+    input,
+  }: {
+    input: {
+      event: WorkflowActionRequestedEvent;
+      actors: WorkflowActorRegistry;
+    };
+  }) => {
+    const actor = input.actors[input.event.actionId];
+    if (!actor) {
+      throw new Error(`No workflow actor for ${input.event.actionId}.`);
+    }
+    return actor(input.event);
+  },
+);
+
+export function createMainWorkflowMachine(dependencies: MainWorkflowMachineDependencies) {
+  const { queue, actors } = dependencies;
 
   const queueListener = fromCallback(({ sendBack }) => {
     const unsubscribe = queue.subscribe(() => {
@@ -34,17 +49,15 @@ export function createWorkflowMachine(dependencies: WorkflowMachineDependencies)
 
   return setup({
     types: {
-      context: {} as WorkflowMachineContext,
-      events: {} as WorkflowMachineEvent,
+      context: {} as MainMachineContext,
+      events: {} as MainMachineEvent,
     },
     actors: {
       queueListener,
-      sendEmail: sendEmailActor,
-      scheduleEmail: scheduleEmailActor,
+      runActor,
     },
     guards: {
-      nextIsSendEmail: () => queue.peek()?.actionId === 'send_email',
-      nextIsScheduleEmail: () => queue.peek()?.actionId === 'schedule_email',
+      hasQueuedJob: () => queue.peek() !== undefined,
     },
     actions: {
       dequeueNext: assign(() => {
@@ -120,40 +133,20 @@ export function createWorkflowMachine(dependencies: WorkflowMachineDependencies)
       idle: {
         entry: raise({ type: 'QUEUE_WAKE' }),
         on: {
-          QUEUE_WAKE: [
-            {
-              guard: 'nextIsSendEmail',
-              target: 'send_email',
-              actions: 'dequeueNext',
-            },
-            {
-              guard: 'nextIsScheduleEmail',
-              target: 'schedule_email',
-              actions: 'dequeueNext',
-            },
-          ],
+          QUEUE_WAKE: {
+            guard: 'hasQueuedJob',
+            target: 'processing',
+            actions: 'dequeueNext',
+          },
         },
       },
-      send_email: {
+      processing: {
         invoke: {
-          src: 'sendEmail',
-          input: ({ context }) => ({
+          src: 'runActor',
+          input: ({ context }: { context: MainMachineContext }) => ({
             event: context.current as WorkflowActionRequestedEvent,
-            brevo,
+            actors,
           }),
-          onDone: {
-            target: 'completed',
-            actions: 'storeSuccess',
-          },
-          onError: {
-            target: 'failed',
-            actions: 'storeError',
-          },
-        },
-      },
-      schedule_email: {
-        invoke: {
-          src: 'scheduleEmail',
           onDone: {
             target: 'completed',
             actions: 'storeSuccess',

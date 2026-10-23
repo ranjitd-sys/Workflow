@@ -5,8 +5,9 @@ see [SYSTEM_DIAGRAM.md](./SYSTEM_DIAGRAM.md).
 
 This document focuses on action identification: chat message -> action
 identification -> event storage. After identification, Chat collects and
-confirms `send_email`, then hands a complete action to the Bun HTTP API workflow
-queue. See the system diagram for the queue and root-machine execution flow.
+confirms `send_email`, then sends a complete action to the Bun API server, which
+proxies it to the workflow service. See the system diagram for queue and
+execution flow.
 
 ## 1. Component diagram
 
@@ -15,7 +16,7 @@ flowchart LR
   subgraph Browser["Browser"]
     Chat["Chat.tsx<br/>send(), chooseOption()"]
     Client["lib/action.ts<br/>identifyAction()"]
-    ClientMachine["client XState<br/>sendEmail machine"]
+    ClientMachine["client XState<br/>send-email-conversation-machine.ts"]
     WorkflowClient["lib/workflow.ts<br/>enqueue + poll"]
   end
 
@@ -26,7 +27,15 @@ flowchart LR
     Definitions["server/src/actions/definitions.ts<br/>send_email, schedule_email"]
     Mock["server/src/actions/mock-action.ts<br/>local regex classifier"]
     Env["server/src/env.ts<br/>environment lookup"]
-    Runtime["server/src/workflow/runtime.ts<br/>queue + root machine"]
+    ApiWorkflowClient["server/src/workflow-client.ts<br/>proxy to :3002"]
+  end
+
+  subgraph WorkflowService["Bun workflow service :3002"]
+    Runtime["runtime singleton"]
+    Queue["InMemoryWorkflowQueue"]
+    MainMachine["main workflow machine"]
+    Actors["actor registry"]
+    BrevoAdapter["Brevo adapter"]
   end
 
   subgraph Engine["@workflow-execution/action-engine"]
@@ -67,7 +76,12 @@ flowchart LR
   FanOut --> Store
 
   WorkflowClient -->|"confirmed complete action"| WorkflowAPI
-  WorkflowAPI --> Runtime
+  WorkflowAPI --> ApiWorkflowClient
+  ApiWorkflowClient -->|"internal HTTP"| Runtime
+  Runtime --> Queue
+  Runtime --> MainMachine
+  MainMachine --> Actors
+  Actors --> BrevoAdapter
 
   API -->|"result, event, mock, eventCount"| Client
   Client --> Chat
@@ -193,11 +207,12 @@ flowchart LR
   Clear["Clear send_email"] --> Collect["Client machine<br/>collect missing fields"]
   Collect --> Confirm["Explicit confirmation"]
   Confirm --> Enqueue["Bun API<br/>POST /api/workflow/events"]
-  Enqueue --> Validate["Validate actionId +<br/>required parameters"]
-  Validate --> Queue["InMemoryWorkflowQueue"]
-  Queue --> Root["Server root machine"]
-  Root -->|"send_email"| Actor["Brevo actor"]
-  Root -->|"schedule_email"| Placeholder["Placeholder actor<br/>always fails"]
+  Enqueue --> Validate["API validates actionId +<br/>required parameters"]
+  Validate --> Proxy["API workflow client<br/>to :3002"]
+  Proxy --> Queue["Workflow service<br/>InMemoryWorkflowQueue"]
+  Queue --> Main["Main workflow machine"]
+  Main -->|"send_email"| Actor["Brevo actor"]
+  Main -->|"schedule_email"| Placeholder["Placeholder actor<br/>always fails"]
   Actor --> Brevo["Brevo API"]
 ```
 

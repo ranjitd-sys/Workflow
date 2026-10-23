@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryWorkflowQueue } from '../src/workflow/queue/in-memory-queue';
+import { InMemoryWorkflowQueue } from '../../src/server/queue/in-memory-queue';
 import {
   WORKFLOW_ACTION_REQUESTED_EVENT_TYPE,
   type WorkflowActionId,
   type WorkflowActionRequestedEvent,
-} from '@workflow-execution/workflow';
+} from '../../src/contracts/workflow';
 
 function makeEvent(
   id: string,

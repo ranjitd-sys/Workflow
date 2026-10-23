@@ -4,7 +4,7 @@ import type {
   WorkflowJobPatch,
   WorkflowQueue,
   WorkflowQueueListener,
-} from '@workflow-execution/workflow';
+} from '../../contracts/workflow';
 
 export class InMemoryWorkflowQueue implements WorkflowQueue {
   private readonly events: WorkflowActionRequestedEvent[] = [];

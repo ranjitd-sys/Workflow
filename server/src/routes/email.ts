@@ -1,6 +1,5 @@
-import { BrevoApiError, sendTransactionalEmail } from '../email/brevo';
-import { getBrevoConfig } from '../email/config';
 import { isRecord, json, readJson } from '../http/json';
+import { sendDirectEmail, WorkflowServiceError } from '../workflow-client';
 
 interface EmailRequestBody {
   actionId: 'send_email';
@@ -47,10 +46,10 @@ export async function handleDirectEmail(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await sendTransactionalEmail(input.parameters, getBrevoConfig());
+    const result = await sendDirectEmail(input.parameters);
     return json({ status: 'sent', messageId: result.messageId });
   } catch (error) {
-    if (error instanceof BrevoApiError) {
+    if (error instanceof WorkflowServiceError) {
       return json({ error: error.message }, error.status);
     }
     return json(

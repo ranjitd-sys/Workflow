@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendTransactionalEmail, type BrevoConfig } from '../src/email/brevo';
+import { sendTransactionalEmail, type BrevoConfig } from '../../src/server/email/brevo';
 
 const config: BrevoConfig = {
   apiKey: 'test-key',

@@ -5,10 +5,11 @@ import {
   type WorkflowActionId,
   type WorkflowActionRequestedEvent,
   type WorkflowJob,
-} from '@workflow-execution/workflow';
-import { getBrevoConfig } from '../email/config';
+} from '../contracts/workflow';
+import { createWorkflowActors } from './actors';
+import { getBrevoConfig } from './email/config';
+import { createMainWorkflowMachine } from './main-machine';
 import { InMemoryWorkflowQueue } from './queue/in-memory-queue';
-import { createWorkflowMachine } from './root-machine';
 
 interface WorkflowRuntime {
   queue: InMemoryWorkflowQueue;
@@ -30,12 +31,8 @@ const runtimeGlobal = globalThis as typeof globalThis & WorkflowGlobal;
 
 function createRuntime(): WorkflowRuntime {
   const queue = new InMemoryWorkflowQueue();
-  const actor = createActor(
-    createWorkflowMachine({
-      queue,
-      brevo: getBrevoConfig(),
-    }),
-  );
+  const actors = createWorkflowActors({ brevo: getBrevoConfig() });
+  const actor = createActor(createMainWorkflowMachine({ queue, actors }));
 
   actor.start();
 

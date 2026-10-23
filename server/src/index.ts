@@ -35,5 +35,5 @@ export function createServer() {
 
 if (import.meta.main) {
   const server = createServer();
-  console.log(`Workflow API listening on ${server.url}`);
+  console.log(`API server listening on ${server.url}`);
 }
