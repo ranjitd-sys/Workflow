@@ -4,6 +4,7 @@ import {
   actionItemSchema,
   entitySchema,
   intentSchema,
+  parameterSchema,
   questionSchema,
 } from '../types';
 
@@ -19,6 +20,7 @@ export const chatIntentEventSchema = z.object({
   source: z.literal('chat'),
   intent: intentSchema,
   entities: z.array(entitySchema),
+  parameters: z.array(parameterSchema),
   actionItems: z.array(actionItemSchema),
   questions: z.array(questionSchema),
   urgency: z.enum(URGENCY_LEVELS),

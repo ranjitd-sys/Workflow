@@ -48,6 +48,7 @@ export function makeResult(overrides: Partial<ChatIntentResult> = {}): ChatInten
       summary: 'The user requests an action.',
     },
     entities: [],
+    parameters: [],
     actionItems: [],
     questions: [],
     urgency: 'normal',

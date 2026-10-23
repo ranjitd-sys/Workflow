@@ -10,6 +10,8 @@ export {
 } from './events/types';
 export type { ChatIntentEvent, IntentEventSink } from './events/types';
 export { InMemoryEventSink } from './events/in-memory-sink';
+export { FanOutEventSink } from './events/fan-out-sink';
+export type { FanOutEventSinkOptions, IntentEventHandler } from './events/fan-out-sink';
 export { IntentEventPublisher } from './events/publisher';
 export type {
   EmittableStatus,

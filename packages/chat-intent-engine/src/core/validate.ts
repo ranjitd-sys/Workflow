@@ -157,6 +157,7 @@ export function validateChatInterpretation(
   if (strictEvidence) {
     const evidenceValues: string[] = [
       ...enriched.entities.map((entity) => entity.evidence),
+      ...enriched.parameters.map((parameter) => parameter.evidence),
       ...enriched.actionItems.map((actionItem) => actionItem.evidence),
       ...enriched.questions.map((question) => question.evidence),
     ];

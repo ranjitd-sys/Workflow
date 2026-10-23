@@ -130,6 +130,7 @@ export class IntentEventPublisher {
       source: 'chat' as const,
       intent: result.intent,
       entities: result.entities,
+      parameters: result.parameters,
       actionItems: result.actionItems,
       questions: result.questions,
       urgency: result.urgency,

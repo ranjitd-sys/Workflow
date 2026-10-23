@@ -13,13 +13,35 @@ export interface DetectedIntentEvent {
   version: number;
   occurredAt: string;
   sessionId: string;
+  messageId?: string;
   intent: DetectedIntent;
+}
+
+export type EmailStatus = 'sent' | 'needs_info' | 'failed';
+
+export interface SentEmailRecord {
+  id: string;
+  to: string;
+  cc: string[];
+  subject: string;
+  body: string;
+  sentAt: string;
+  sessionId: string;
+  messageId?: string;
+  status: EmailStatus;
+  reason?: string;
 }
 
 export interface IntentResponse {
   result: {
     intent: DetectedIntent;
     entities: unknown[];
+    parameters: {
+      name: string;
+      value: string;
+      normalized: string | null;
+      evidence: string;
+    }[];
     actionItems: unknown[];
     questions: unknown[];
     urgency: string;
@@ -93,4 +115,18 @@ export function detectIntent(input: DetectIntentInput): Promise<IntentRequestRes
 /** Resolve an ambiguous/unknown intent from an explicit user selection. */
 export function resolveIntent(input: ResolveIntentInput): Promise<IntentRequestResult> {
   return postIntent('/api/chat/intent/resolve', input);
+}
+
+/** Fetch emails recorded by the server-side email worker for a session. */
+export async function fetchSentEmails(sessionId: string): Promise<SentEmailRecord[]> {
+  try {
+    const response = await fetch(
+      `/api/emails?sessionId=${encodeURIComponent(sessionId)}`,
+    );
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { emails?: SentEmailRecord[] };
+    return Array.isArray(payload.emails) ? payload.emails : [];
+  } catch {
+    return [];
+  }
 }

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   detectIntent,
+  fetchSentEmails,
   formatIntentId,
   resolveIntent,
   type IntentResponse,
+  type SentEmailRecord,
 } from '../../lib/intent';
 
 const MAX_CLARIFICATION_ROUNDS = 2;
@@ -40,6 +42,19 @@ function newId(): string {
   } catch {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+}
+
+async function waitForEmailResult(
+  sessionId: string,
+  messageId: string,
+): Promise<SentEmailRecord | null> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const emails = await fetchSentEmails(sessionId);
+    const match = emails.find((email) => email.messageId === messageId);
+    if (match) return match;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return null;
 }
 
 function buildHistory(
@@ -115,7 +130,13 @@ function UserBubble({ content }: { content: string }) {
   );
 }
 
-function IntentCard({ response }: { response: IntentResponse }) {
+function IntentCard({
+  response,
+  emailResult,
+}: {
+  response: IntentResponse;
+  emailResult?: SentEmailRecord;
+}) {
   const { intent } = response.result;
   const statusClass =
     intent.status === 'clear'
@@ -162,6 +183,26 @@ function IntentCard({ response }: { response: IntentResponse }) {
                 <li key={item}>{item}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {intent.primary === 'send_email' && (
+          <div className="mt-2 text-xs">
+            {emailResult ? (
+              emailResult.status === 'sent' ? (
+                <span className="text-neutral-700">Email sent to {emailResult.to}</span>
+              ) : emailResult.status === 'needs_info' ? (
+                <span className="text-neutral-600">
+                  Email needs info: {emailResult.reason ?? 'Missing details.'}
+                </span>
+              ) : (
+                <span className="text-neutral-600">
+                  Email failed: {emailResult.reason ?? 'Unknown error.'}
+                </span>
+              )
+            ) : (
+              <span className="text-neutral-400">Processing email…</span>
+            )}
           </div>
         )}
 
@@ -233,6 +274,7 @@ export default function Chat({ user, onSignOut }: Props) {
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [clarification, setClarification] = useState<ActiveClarification | null>(null);
+  const [emailResults, setEmailResults] = useState<Record<string, SentEmailRecord>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>('');
@@ -277,11 +319,12 @@ export default function Chat({ user, onSignOut }: Props) {
     setAnalyzing(true);
     append({ id: newId(), kind: 'user', content: message });
 
+    const intentMessageId = newId();
     const result = await detectIntent({
       message,
       history: buildHistory(priorEntries),
       sessionId,
-      messageId: newId(),
+      messageId: intentMessageId,
       timestamp: new Date().toISOString(),
     });
 
@@ -297,6 +340,16 @@ export default function Chat({ user, onSignOut }: Props) {
     if (status === 'clear') {
       append({ id: newId(), kind: 'intent', response });
       setClarification(null);
+
+      if (response.result.intent.primary === 'send_email' && response.event?.messageId) {
+        const messageId = response.event.messageId;
+        void waitForEmailResult(sessionId, messageId).then((email) => {
+          if (email) {
+            setEmailResults((prev) => ({ ...prev, [messageId]: email }));
+          }
+        });
+      }
+
       setAnalyzing(false);
       return;
     }
@@ -329,8 +382,18 @@ export default function Chat({ user, onSignOut }: Props) {
     });
 
     if (result.ok) {
-      append({ id: newId(), kind: 'intent', response: result.response });
+      const response = result.response;
+      append({ id: newId(), kind: 'intent', response });
       setClarification(null);
+
+      if (response.result.intent.primary === 'send_email' && response.event?.messageId) {
+        const messageId = response.event.messageId;
+        void waitForEmailResult(sessionIdRef.current, messageId).then((email) => {
+          if (email) {
+            setEmailResults((prev) => ({ ...prev, [messageId]: email }));
+          }
+        });
+      }
     } else {
       append({ id: newId(), kind: 'error', message: result.error });
     }
@@ -404,7 +467,14 @@ export default function Chat({ user, onSignOut }: Props) {
                 return <UserBubble key={entry.id} content={entry.content} />;
               }
               if (entry.kind === 'intent') {
-                return <IntentCard key={entry.id} response={entry.response} />;
+                const messageId = entry.response.event?.messageId;
+                return (
+                  <IntentCard
+                    key={entry.id}
+                    response={entry.response}
+                    emailResult={messageId ? emailResults[messageId] : undefined}
+                  />
+                );
               }
               if (entry.kind === 'clarification') {
                 return (

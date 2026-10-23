@@ -55,6 +55,7 @@ export function buildChatJsonSchema(intentIds: readonly string[]) {
     required: [
       'intent',
       'entities',
+      'parameters',
       'actionItems',
       'questions',
       'urgency',
@@ -102,6 +103,20 @@ export function buildChatJsonSchema(intentIds: readonly string[]) {
               ],
             },
             text: { type: 'string' },
+            normalized: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            evidence: { type: 'string' },
+          },
+        },
+      },
+      parameters: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'value', 'normalized', 'evidence'],
+          properties: {
+            name: { type: 'string' },
+            value: { type: 'string' },
             normalized: { anyOf: [{ type: 'string' }, { type: 'null' }] },
             evidence: { type: 'string' },
           },

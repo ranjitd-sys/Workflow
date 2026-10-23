@@ -4,7 +4,7 @@ import {
   chatIntentResultSchema,
   type ChatIntentResult,
 } from '@workflow-execution/chat-intent-engine';
-import { createIntentPublisher, intentEventSink } from '../../../../server/intent';
+import { createIntentPublisher, intentEventStore } from '../../../../server/intent';
 
 const SUPPORTED_INTENTS = DEFAULT_INTENTS.map((intent) => intent.id);
 const SUPPORTED = new Set<string>(SUPPORTED_INTENTS);
@@ -87,7 +87,7 @@ export const POST: APIRoute = async ({ request }) => {
       result,
       event,
       mock,
-      eventCount: intentEventSink.events.length,
+      eventCount: intentEventStore.events.length,
       supportedIntents: SUPPORTED_INTENTS,
     });
   } catch (error) {

@@ -5,7 +5,7 @@ import {
   InvalidMessageError,
   LlmProviderError,
 } from '@workflow-execution/chat-intent-engine';
-import { createIntentPublisher, intentEventSink } from '../../../server/intent';
+import { createIntentPublisher, intentEventStore } from '../../../server/intent';
 
 const SUPPORTED_INTENTS = DEFAULT_INTENTS.map((intent) => intent.id);
 
@@ -88,7 +88,7 @@ export const POST: APIRoute = async ({ request }) => {
       result,
       event,
       mock,
-      eventCount: intentEventSink.events.length,
+      eventCount: intentEventStore.events.length,
       supportedIntents: SUPPORTED_INTENTS,
     });
   } catch (error) {
@@ -107,5 +107,5 @@ export const POST: APIRoute = async ({ request }) => {
 
 /** Debug endpoint: inspect the events currently held in memory. */
 export const GET: APIRoute = async () => {
-  return json({ count: intentEventSink.events.length, events: intentEventSink.events });
+  return json({ count: intentEventStore.events.length, events: intentEventStore.events });
 };

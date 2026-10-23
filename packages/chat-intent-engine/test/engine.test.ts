@@ -393,4 +393,42 @@ describe('ChatIntentEngine', () => {
     const result = await engine.detect(makeInput());
     expect(result.entities).toHaveLength(1);
   });
+
+  it('extracts explicit send_email parameters', async () => {
+    const { provider } = createMockProvider(
+      makeResult({
+        intent: {
+          primary: 'send_email',
+          status: 'clear',
+          alternatives: [],
+          summary: 'The user wants to send an email to john@acme.com.',
+        },
+        parameters: [
+          {
+            name: 'recipient',
+            value: 'john@acme.com',
+            normalized: null,
+            evidence: 'john@acme.com',
+          },
+          {
+            name: 'body',
+            value: "I'll be late",
+            normalized: null,
+            evidence: "I'll be late",
+          },
+        ],
+      }),
+    );
+
+    const engine = new ChatIntentEngine({ provider });
+    const result = await engine.detect(
+      makeInput({ message: "Send an email to john@acme.com saying I'll be late." }),
+    );
+
+    expect(result.intent.primary).toBe('send_email');
+    expect(result.parameters.map((parameter) => parameter.name)).toEqual([
+      'recipient',
+      'body',
+    ]);
+  });
 });

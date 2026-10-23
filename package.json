@@ -10,7 +10,7 @@
     "build": "npm run build --workspace=front-end",
     "preview": "npm run preview --workspace=front-end",
     "astro": "npm run astro --workspace=front-end",
-    "test": "npm run test --workspace=@workflow-execution/chat-intent-engine",
+    "test": "npm run test --workspace=@workflow-execution/chat-intent-engine && npm run test --workspace=front-end",
     "typecheck": "npm run typecheck --workspace=@workflow-execution/chat-intent-engine"
   },
   "allowScripts": {

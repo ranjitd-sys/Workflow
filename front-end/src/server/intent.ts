@@ -1,15 +1,29 @@
 import {
   ChatIntentEngine,
+  FanOutEventSink,
   IntentEventPublisher,
   InMemoryEventSink,
   OpenAiCompatibleProvider,
   type StructuredLlmProvider,
 } from '@workflow-execution/chat-intent-engine';
+import { emailWorker } from './email-worker';
 import { env } from './env';
 import { createMockIntentProvider } from './mock-intent';
 
 /** Shared in-memory event store for the lifetime of the server process. */
-export const intentEventSink = new InMemoryEventSink();
+export const intentEventStore = new InMemoryEventSink();
+
+/** Fan out each event to the debug store and the email worker. */
+export const intentEventSink = new FanOutEventSink({
+  sinks: [intentEventStore],
+  handlers: [(event) => emailWorker.handle(event)],
+  onError: (error) => {
+    console.error(
+      '[intent-event] handler failed:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+  },
+});
 
 export interface IntentPublisherBundle {
   publisher: IntentEventPublisher;
