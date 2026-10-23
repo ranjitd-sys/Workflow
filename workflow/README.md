@@ -15,7 +15,7 @@ interface.
 
 ## send_email
 
-The client machine is created by `createSendEmailWorkflow()` and exported from
+The client machine is created by `createSendEmailConversationMachine()` and exported from
 `src/email/send-email.workflow.ts`.
 
 States:

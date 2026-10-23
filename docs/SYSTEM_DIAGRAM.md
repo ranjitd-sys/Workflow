@@ -68,8 +68,8 @@ flowchart TB
     Page["pages/index.astro"]
     AuthGate["AuthGate.tsx"]
     Chat["Chat.tsx<br/>transcript + confirmation"]
+    ClientMachine["client XState<br/>send-email-conversation-machine.ts"]
     ClientAction["lib/action.ts<br/>identifyAction()"]
-    ClientMachine["client XState<br/>createSendEmailWorkflow()"]
     ClientWorkflow["lib/workflow.ts<br/>enqueue + poll"]
   end
 
@@ -98,8 +98,10 @@ flowchart TB
   end
 
   subgraph WorkflowPackage["@workflow-execution/workflow"]
-    ClientDefinition["client XState machine"]
     Contracts["shared event/job contracts"]
+    ServerRoot["server root machine"]
+    ServerActors["server actors"]
+    BrevoAdapter["Brevo adapter"]
   end
 
   subgraph ActionPackage["@workflow-execution/action-engine"]
@@ -123,7 +125,7 @@ flowchart TB
   Chat --> ClientAction
   Chat --> ClientMachine
   Chat --> ClientWorkflow
-  ClientMachine --> ClientDefinition
+  ClientMachine --> Contracts
   ClientWorkflow --> Contracts
   ClientAction -->|"POST /api/chat/action"| Proxy
   ClientWorkflow -->|"POST confirmed action"| Proxy
@@ -241,7 +243,7 @@ sequenceDiagram
   participant Runtime as Bun workflow runtime
   participant Queue as InMemoryWorkflowQueue
   participant Root as server root XState machine
-  participant SendActor as server send_email actor
+  participant SendActor as workflow send_email actor
   participant Brevo as Brevo API
   participant StatusAPI as Bun API<br/>GET /api/workflow/events/:eventId
 
@@ -296,8 +298,8 @@ sends `EXECUTION_FAILED` to the client machine.
 
 ## 5. Server root workflow machine (implemented)
 
-The root machine lives in `server/src/workflow/root-machine.ts`. It is started
-only by `server/src/workflow/runtime.ts` inside the Bun API process.
+The root machine lives in `workflow/src/server/root-machine.ts`. It is started
+only by `server/src/runtime.ts` inside the Bun API process.
 
 ```mermaid
 stateDiagram-v2
@@ -316,9 +318,9 @@ processes one job at a time and raises another wake-up after completion.
 
 ## 6. Client send-email conversation machine (implemented)
 
-The client machine lives in `workflow/src/core/create-email-workflow.ts`.
-`Chat.tsx` sends events into it and performs the enqueue/poll effects after
-`CONFIRM`.
+The client conversation machine lives in
+`front-end/src/lib/chat/send-email-conversation-machine.ts`. `Chat.tsx` sends events into it
+and performs the enqueue/poll effects after `CONFIRM`.
 
 ```mermaid
 stateDiagram-v2

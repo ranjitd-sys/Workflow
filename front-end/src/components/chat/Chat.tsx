@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMachine } from '@xstate/react';
 import {
-  createSendEmailWorkflow,
+  createSendEmailConversationMachine,
   type SendEmailActionIdentificationResult,
   type SendEmailParameterName,
-} from '@workflow-execution/workflow';
+} from '../../lib/chat/send-email-conversation-machine';
 import {
   formatActionIdentifier,
   identifyAction,
@@ -14,7 +14,7 @@ import { enqueueWorkflowAction, waitForWorkflowJob } from '../../lib/workflow';
 
 const MAX_CLARIFICATION_ROUNDS = 2;
 
-const sendEmailMachine = createSendEmailWorkflow();
+const sendEmailConversationMachine = createSendEmailConversationMachine();
 
 const SUGGESTIONS = [
   { icon: '✉️', title: 'Send an email', prompt: 'Send an email to john@acme.com about the invoice.' },
@@ -271,7 +271,7 @@ interface Props {
 }
 
 export default function Chat({ user, onSignOut }: Props) {
-  const [state, sendMachine, actor] = useMachine(sendEmailMachine);
+  const [state, sendConversationEvent, actor] = useMachine(sendEmailConversationMachine);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -316,7 +316,7 @@ export default function Chat({ user, onSignOut }: Props) {
       if (!name) return;
       setInput('');
       append({ id: newId(), kind: 'user', content: message });
-      sendMachine({ type: 'PARAMETER_PROVIDED', name, value: message });
+      sendConversationEvent({ type: 'PARAMETER_PROVIDED', name, value: message });
       return;
     }
 
@@ -326,10 +326,10 @@ export default function Chat({ user, onSignOut }: Props) {
     if (!sessionId) return;
 
     if (state.matches('completed') || state.matches('failed') || state.matches('cancelled')) {
-      sendMachine({ type: 'RESET' });
+      sendConversationEvent({ type: 'RESET' });
     }
 
-    sendMachine({ type: 'SUBMIT_MESSAGE', message });
+    sendConversationEvent({ type: 'SUBMIT_MESSAGE', message });
 
     const priorEntries = transcript;
     const activeClarification = clarification;
@@ -348,7 +348,7 @@ export default function Chat({ user, onSignOut }: Props) {
     });
 
     if (!result.ok) {
-      sendMachine({ type: 'IDENTIFICATION_FAILED', error: result.error });
+      sendConversationEvent({ type: 'IDENTIFICATION_FAILED', error: result.error });
       append({ id: newId(), kind: 'error', message: result.error });
       setAnalyzing(false);
       return;
@@ -359,7 +359,7 @@ export default function Chat({ user, onSignOut }: Props) {
     const identifier = response.result.action.identifier;
 
     if (status === 'clear' && identifier === 'send_email') {
-      sendMachine({
+      sendConversationEvent({
         type: 'IDENTIFIED',
         result: response.result as SendEmailActionIdentificationResult,
       });
@@ -393,14 +393,14 @@ export default function Chat({ user, onSignOut }: Props) {
     if (nextRound <= MAX_CLARIFICATION_ROUNDS) {
       const { question, options } = buildClarification(response);
       const entryId = newId();
-      sendMachine({
+      sendConversationEvent({
         type: 'NEEDS_CLARIFICATION',
         result: response.result as SendEmailActionIdentificationResult,
       });
       append({ id: entryId, kind: 'clarification', question, options, response });
       setClarification({ entryId, response, round: nextRound });
     } else {
-      if (state.matches('clarifying')) sendMachine({ type: 'RESET' });
+      if (state.matches('clarifying')) sendConversationEvent({ type: 'RESET' });
       append({ id: newId(), kind: 'action', response });
       setClarification(null);
     }
@@ -425,12 +425,12 @@ export default function Chat({ user, onSignOut }: Props) {
     };
 
     if (actionIdentifier === 'send_email') {
-      sendMachine({
+      sendConversationEvent({
         type: 'CLARIFICATION_CHOSEN',
         result: response.result as SendEmailActionIdentificationResult,
       });
     } else if (state.matches('clarifying')) {
-      sendMachine({ type: 'RESET' });
+      sendConversationEvent({ type: 'RESET' });
     }
 
     append({ id: newId(), kind: 'action', response });
@@ -442,11 +442,11 @@ export default function Chat({ user, onSignOut }: Props) {
 
     const { to, subject, body } = state.context.parameters;
     if (!to || !subject || !body) {
-      sendMachine({ type: 'EDIT' });
+      sendConversationEvent({ type: 'EDIT' });
       return;
     }
 
-    sendMachine({ type: 'CONFIRM' });
+    sendConversationEvent({ type: 'CONFIRM' });
     const executing = actor.getSnapshot();
     if (!executing.matches('executing')) return;
 
@@ -457,7 +457,7 @@ export default function Chat({ user, onSignOut }: Props) {
     });
 
     if (!enqueued.ok) {
-      sendMachine({ type: 'EXECUTION_FAILED', error: enqueued.error });
+      sendConversationEvent({ type: 'EXECUTION_FAILED', error: enqueued.error });
       append({ id: newId(), kind: 'error', message: enqueued.error });
       return;
     }
@@ -465,12 +465,12 @@ export default function Chat({ user, onSignOut }: Props) {
     const execution = await waitForWorkflowJob(enqueued.eventId);
 
     if (!execution.ok) {
-      sendMachine({ type: 'EXECUTION_FAILED', error: execution.error });
+      sendConversationEvent({ type: 'EXECUTION_FAILED', error: execution.error });
       append({ id: newId(), kind: 'error', message: execution.error });
       return;
     }
 
-    sendMachine({ type: 'EXECUTION_SUCCEEDED', messageId: execution.messageId });
+    sendConversationEvent({ type: 'EXECUTION_SUCCEEDED', messageId: execution.messageId });
     append({
       id: newId(),
       kind: 'action',
@@ -479,7 +479,7 @@ export default function Chat({ user, onSignOut }: Props) {
   };
 
   const startNewRequest = () => {
-    sendMachine({ type: 'RESET' });
+    sendConversationEvent({ type: 'RESET' });
     setClarification(null);
   };
 
@@ -594,7 +594,7 @@ export default function Chat({ user, onSignOut }: Props) {
             </p>
             <button
               type="button"
-              onClick={() => sendMachine({ type: 'CANCEL' })}
+              onClick={() => sendConversationEvent({ type: 'CANCEL' })}
               className="mt-2 text-xs text-neutral-500 hover:text-neutral-900"
             >
               Cancel
@@ -625,14 +625,14 @@ export default function Chat({ user, onSignOut }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => sendMachine({ type: 'EDIT' })}
+                onClick={() => sendConversationEvent({ type: 'EDIT' })}
                 className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-neutral-900 hover:text-neutral-900"
               >
                 Edit
               </button>
               <button
                 type="button"
-                onClick={() => sendMachine({ type: 'CANCEL' })}
+                onClick={() => sendConversationEvent({ type: 'CANCEL' })}
                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:text-neutral-900"
               >
                 Cancel
@@ -671,7 +671,7 @@ export default function Chat({ user, onSignOut }: Props) {
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
-                onClick={() => sendMachine({ type: 'RETRY' })}
+                onClick={() => sendConversationEvent({ type: 'RETRY' })}
                 className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:border-neutral-900 hover:text-neutral-900"
               >
                 Try again

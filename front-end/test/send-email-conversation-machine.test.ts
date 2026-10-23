@@ -1,6 +1,6 @@
 import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
-import { createSendEmailWorkflow } from '../src/email/send-email.workflow';
+import { createSendEmailConversationMachine } from '../src/lib/chat/send-email-conversation-machine';
 
 function makeResult(missing: string[], parameters: Array<{ name: string; value: string }> = []) {
   return {
@@ -22,9 +22,9 @@ function makeResult(missing: string[], parameters: Array<{ name: string; value: 
   };
 }
 
-describe('sendEmailWorkflow', () => {
+describe('sendEmailConversationMachine', () => {
   it('moves from identifying to collecting when parameters are missing', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({ type: 'IDENTIFIED', result: makeResult(['to', 'subject', 'body']) });
@@ -34,7 +34,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('moves to confirming when all parameters are present', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({
@@ -51,7 +51,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('collects parameters one at a time', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({ type: 'IDENTIFIED', result: makeResult(['to', 'subject', 'body']) });
@@ -67,7 +67,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('applies a clarification choice and continues collecting', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Email John' });
     actor.send({
@@ -88,7 +88,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('confirms immediately when a clarification choice is complete', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Email John' });
     actor.send({ type: 'NEEDS_CLARIFICATION', result: makeResult(['to']) });
@@ -105,7 +105,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('asks for all fields again when editing a confirmed email', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({
@@ -124,7 +124,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('executes and completes after confirmation', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({
@@ -146,7 +146,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('returns to confirming after retry', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({
@@ -168,7 +168,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('resets to idle when retrying before parameters are collected', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({ type: 'IDENTIFICATION_FAILED', error: 'LLM unavailable' });
@@ -182,7 +182,7 @@ describe('sendEmailWorkflow', () => {
   });
 
   it('cancels and resets', () => {
-    const actor = createActor(createSendEmailWorkflow());
+    const actor = createActor(createSendEmailConversationMachine());
     actor.start();
     actor.send({ type: 'SUBMIT_MESSAGE', message: 'Send an email' });
     actor.send({ type: 'IDENTIFIED', result: makeResult(['to', 'subject', 'body']) });

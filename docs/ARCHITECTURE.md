@@ -58,9 +58,10 @@ confirmation.
 ├── front-end/
 │   ├── src/components/chat/Chat.tsx
 │   ├── src/lib/action.ts
+│   ├── src/lib/chat/send-email-conversation-machine.ts
 │   ├── src/lib/workflow.ts
 │   ├── src/pages/index.astro
-│   └── test/workflow-client.test.ts
+│   └── test/
 ├── server/
 │   ├── src/index.ts                 Bun.serve route table
 │   ├── src/action.ts                action-engine wiring
@@ -110,7 +111,7 @@ provider or the local mock provider based on `server/.env`.
 
 ## Confirmation and queueing
 
-`Chat.tsx` creates one client XState actor from `createSendEmailWorkflow()` and
+`Chat.tsx` creates one client XState actor from `createSendEmailConversationMachine()` and
 maps identification results into machine events:
 
 - missing required fields -> `collecting`;
@@ -118,7 +119,7 @@ maps identification results into machine events:
 - user confirmation -> `CONFIRM`;
 - queue/poll success or failure -> `EXECUTION_SUCCEEDED` / `EXECUTION_FAILED`.
 
-The client machine is pure and framework-free. After `CONFIRM`, Chat calls
+The client conversation machine is pure and framework-free. After `CONFIRM`, Chat calls
 `enqueueWorkflowAction()` and then `waitForWorkflowJob()` from
 `front-end/src/lib/workflow.ts`. Both use relative `/api` URLs.
 
@@ -181,7 +182,7 @@ Only actions with all required parameters from `APP_ACTIONS` are accepted by
 
 `InMemoryWorkflowQueue` is FIFO, deduplicates by event ID, and stores job state
 (`queued`, `running`, `succeeded`, `failed`). The root machine in
-`server/src/workflow/root-machine.ts`:
+`workflow/src/server/root-machine.ts`:
 
 1. subscribes to queue notifications with `fromCallback`;
 2. dequeues one event at a time;
@@ -196,7 +197,7 @@ throws `ScheduleNotImplementedError`.
 
 ### Brevo actor
 
-`server/src/workflow/actors/send-email.actor.ts` receives the queued event plus
+`workflow/src/server/actors/send-email.actor.ts` receives the queued event plus
 an injected `BrevoConfig`. It validates that `to`, `subject`, and `body` are
 present, then calls `sendTransactionalEmail()` in `server/src/email/brevo.ts`.
 

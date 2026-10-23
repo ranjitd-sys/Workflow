@@ -22,7 +22,7 @@ export interface SendEmailActionIdentificationResult {
   ambiguities: string[];
 }
 
-export interface SendEmailContext {
+export interface SendEmailConversationContext {
   actionId: 'send_email';
   parameters: SendEmailParameters;
   missing: SendEmailMissing;
@@ -31,7 +31,7 @@ export interface SendEmailContext {
   error?: string;
 }
 
-export type SendEmailEvent =
+export type SendEmailConversationEvent =
   | { type: 'SUBMIT_MESSAGE'; message: string }
   | { type: 'IDENTIFICATION_FAILED'; error: string }
   | { type: 'IDENTIFIED'; result: SendEmailActionIdentificationResult }

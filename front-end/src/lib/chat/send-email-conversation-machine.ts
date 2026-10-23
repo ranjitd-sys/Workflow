@@ -1,10 +1,11 @@
 import { assign, setup } from 'xstate';
 import type {
-  SendEmailContext,
-  SendEmailEvent,
+  SendEmailConversationContext,
+  SendEmailConversationEvent,
   SendEmailParameterName,
   SendEmailActionIdentificationResult,
-} from './types';
+} from './send-email-conversation-types';
+export type { SendEmailActionIdentificationResult, SendEmailParameterName } from './send-email-conversation-types';
 
 const REQUIRED_PARAMETERS: readonly SendEmailParameterName[] = ['to', 'subject', 'body'];
 
@@ -15,8 +16,8 @@ function isSendEmailResult(result: SendEmailActionIdentificationResult): boolean
   );
 }
 
-function toParameters(result: SendEmailActionIdentificationResult): SendEmailContext['parameters'] {
-  const parameters: SendEmailContext['parameters'] = {};
+function toParameters(result: SendEmailActionIdentificationResult): SendEmailConversationContext['parameters'] {
+  const parameters: SendEmailConversationContext['parameters'] = {};
   for (const parameter of result.parameters) {
     if (REQUIRED_PARAMETERS.includes(parameter.name as SendEmailParameterName)) {
       parameters[parameter.name as SendEmailParameterName] = parameter.value;
@@ -31,11 +32,11 @@ function missingParameters(result: SendEmailActionIdentificationResult): SendEma
   );
 }
 
-export function createSendEmailWorkflow() {
+export function createSendEmailConversationMachine() {
   return setup({
     types: {
-      context: {} as SendEmailContext,
-      events: {} as SendEmailEvent,
+      context: {} as SendEmailConversationContext,
+      events: {} as SendEmailConversationEvent,
     },
     guards: {
       isSendEmailResult: ({ event }) =>
@@ -140,7 +141,7 @@ export function createSendEmailWorkflow() {
     },
   }).createMachine({
     /** @xstate-layout N4IgpgJg5mDOIC5SzAOwgUQLYEMCWANgHR4QFgDEAygKoBCAsgJIAqA+gxlVQIIDiGANoAGALqJQABwD2sPABc801BJAAPRACZNANgCcRAOwBGTQFY9wncN2HhAFgA0IAJ6IAHMaKa9vvQGZ7Yx1jQz0AX3DnFHRsfGJScgoAJS4MFhFxJBAZOUVlVQ0ETXtDQyNDM2E-Q38zUx1nN2Kyoj13f0Dff0N3ezN+yOi0TFxCEgg0RQAzFzxUKAomABEMADkWJgAxJgxlzNVchSUVbKLNfx0iDsrhf2N7e3cOsybEPVCKvU1jPuMrBxDEAxUbxCZTPCzeaLFbrTY7PaCYxZKSyY4FM5aS7XHpVe6PZ51N4IOzuIxBEw6PodS5AkFxcakCFQhZLVYbba7faaFE5NH5U6gc7Ym54h5PF7EiwGfwfOzfapWHR0kYMhKTVAzOastYYPZUNgAYQAMjxkpzDTxNgB5NYHbJHAWFLFXUV3cWE16uRDGf5knT2fzuC46QJVdoq2JjdXM7Uw9nwpiWm1rNhbHhMY2IsSHfknZ3FEW490EyXe4rCLw6KrCSvCMwDCWR0GMjVa6EUS1rQ0YY321F5fOYwuu4v4iVE8vGfyacrB-yV30B+rBZtqogAYwIOAATpC49R6Mx2JxuPwhDmHXmMULELKybVKv8fjpQ2F-MT-mYyXpA+5hC8FiGGu0abtue4sosJpmhaVpMLaRoABLWlQ6z9nyg43uoiC1GY1zmDYjz2DoJSXJ+AJECEDi3NooZUiBYJbru+4dl2PZ9peA7ooK2EknU+FVCUjwkYGjRTpowjlKUC53GY5glJoDHjBu0gEOQG6KKyAAKZo8JwLAYMkbBack1oAGqwvsnEYdxBbtP4RBWOYnSmJctjEu49REGYhg+LUxF3FS7hKcQKlqWAGkdjpyR6ekhnGaZFmrPsyK5phPFFA8wTeDW-TWL53zGMSviaEQAVPLoISWK+IWbqp6maVBPDdr26GOkOt4IFlVwEQ4Zj5T4Pzke45SmD4ejfp5ei+YpUTAqqoEqag0x4DuWCsbaOzJAwbXXhlPq1D+uL+bWnQ2MSVHXAV36-L8PjGLVS0rWtHZ7Kwu3pQWoSGPYRgkT5AzVv+gTFfYpWGNYxGHZ0OgmI9yjPetrJsa11ntVh5yVqVb7fmYQa1tWXrNLUXjaD4QM-NUERzfSoFgGoEUAK6NRQGAABoYIaNApmwtCGj2ezZry6P7XxeHBoJREiWR5aBL9TymD5r4-Z4yo0wtYL00zLPs5z3Pwam6aZkLaW2cOuECYRwmkWJzSPHh-V9eY013DO8NYJI5DyJAKRpBkaN7V9QQ9bljsFUNsuPGVnjmBDsMK2rwxRmC0zxD7qQsMkACaH1m513U5bWeWSYNRXlnjDn-iRfzGP1pjBeryfjKnhDp37udOsOBe9cX4dl3bspEA8PSkh8Ay+Y9OCoBuYDhRAvuof7wuB8OtEGCYzsArYDjkVSbRymDJR9JY-iRHNqDSJM8DZLT8Sm53nUALS24gz+1YkYD3x1vEEb9I31HcJ8oZ3AvwQCPSi-QQH3Cqr6es782wsQWF-DGiAwagzaDSWUPlfh3B+I9cCiCoDINFtYLw-5azGAmiNJ4u9RqzmCE8ModEzDw3CpFJBV5Ppd2nNjGsdRYEzl9MVLyFwBggKpI8OW8NlqrSRkQzhedeK-E8EPY69gHAEk0O4YkJMiAzkGh0QMHxJK1S1huZm0JiEFgsK6WslYqEq2JOAgIlRnZBHuJQ92nswDewgFY7hC4h6Bl6L5X0NDZaw0cv9Ho1h7jVHsLVFu5A-EKIfko4e3k6h3AmmEV8FhiTETJN1AM1RdAAUBI3FsoUp4zznv4zqPxSh6NxCAzyDhzDkQ+N5WoNgfg1wbpEIAA */
-    id: 'sendEmail',
+    id: 'sendEmailConversation',
     initial: 'idle',
     context: {
       actionId: 'send_email',
